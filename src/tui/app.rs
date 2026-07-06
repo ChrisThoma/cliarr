@@ -86,6 +86,8 @@ pub struct SearchState {
     pub selected: usize,
     /// Tick at which the debounced live search should fire.
     pub fire_at: Option<u64>,
+    /// Bumped per search; lookup responses carrying an older seq are stale.
+    pub seq: u64,
 }
 
 impl Default for SearchState {
@@ -97,6 +99,7 @@ impl Default for SearchState {
             series: Loadable::NotAsked,
             selected: 0,
             fire_at: None,
+            seq: 0,
         }
     }
 }
@@ -421,13 +424,17 @@ impl App {
             DataMsg::PlexSessions(r) => self.dash.sessions.set(r),
             DataMsg::RadarrMovies(r) => self.movies.set(r),
             DataMsg::SonarrSeries(r) => self.series.set(r),
-            DataMsg::RadarrLookup(r) => {
-                self.search.movies.set(r);
-                self.search.selected = 0;
+            DataMsg::RadarrLookup { seq, result } => {
+                if seq == self.search.seq {
+                    self.search.movies.set(result);
+                    self.search.selected = 0;
+                }
             }
-            DataMsg::SonarrLookup(r) => {
-                self.search.series.set(r);
-                self.search.selected = 0;
+            DataMsg::SonarrLookup { seq, result } => {
+                if seq == self.search.seq {
+                    self.search.series.set(result);
+                    self.search.selected = 0;
+                }
             }
             DataMsg::AddOptions(r) => {
                 if let Some(Modal::Add(add)) = &mut self.modal {

@@ -86,6 +86,25 @@ impl Config {
             .map_err(|e| CliarrError::Config(format!("invalid config {}: {e}", path.display())))
     }
 
+    /// Like `load`, but a missing file yields defaults. Any other problem
+    /// (malformed TOML, permissions) still errors, so `config init` can't
+    /// silently replace a broken config with a fresh one.
+    pub fn load_or_default(override_path: Option<&Path>) -> Result<Self> {
+        let path = Self::path(override_path)?;
+        let raw = match std::fs::read_to_string(&path) {
+            Ok(raw) => raw,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(e) => {
+                return Err(CliarrError::Config(format!(
+                    "cannot read {} ({e})",
+                    path.display()
+                )));
+            }
+        };
+        toml::from_str(&raw)
+            .map_err(|e| CliarrError::Config(format!("invalid config {}: {e}", path.display())))
+    }
+
     pub fn save(&self, override_path: Option<&Path>) -> Result<PathBuf> {
         let path = Self::path(override_path)?;
         if let Some(parent) = path.parent() {
@@ -94,23 +113,38 @@ impl Config {
         }
         let raw = toml::to_string_pretty(self)
             .map_err(|e| CliarrError::Config(format!("cannot serialize config: {e}")))?;
-        std::fs::write(&path, raw)
-            .map_err(|e| CliarrError::Config(format!("cannot write {}: {e}", path.display())))?;
+        // Write secrets to a 0600 temp file first, then rename over the
+        // target: no window where the file is world-readable or half-written.
+        let tmp = path.with_extension("toml.tmp");
+        let _ = std::fs::remove_file(&tmp);
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
         }
+        let write_err =
+            |e: std::io::Error| CliarrError::Config(format!("cannot write {}: {e}", tmp.display()));
+        {
+            use std::io::Write;
+            let mut file = opts.open(&tmp).map_err(write_err)?;
+            file.write_all(raw.as_bytes()).map_err(write_err)?;
+            file.sync_all().map_err(write_err)?;
+        }
+        std::fs::rename(&tmp, &path)
+            .map_err(|e| CliarrError::Config(format!("cannot write {}: {e}", path.display())))?;
         Ok(path)
     }
 
     /// Redacted copy for `config show`: secrets replaced with asterisks.
     pub fn redacted(&self) -> Self {
         fn mask(s: &str) -> String {
-            if s.len() <= 4 {
+            if s.chars().count() <= 4 {
                 "****".into()
             } else {
-                format!("{}****", &s[..4])
+                let head: String = s.chars().take(4).collect();
+                format!("{head}****")
             }
         }
         let mut c = self.clone();

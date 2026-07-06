@@ -85,18 +85,20 @@ pub fn series(tx: UnboundedSender<Event>, clients: Arc<Clients>) {
     }
 }
 
-pub fn lookup_movies(tx: UnboundedSender<Event>, clients: Arc<Clients>, term: String) {
+pub fn lookup_movies(tx: UnboundedSender<Event>, clients: Arc<Clients>, term: String, seq: u64) {
     if let Some(radarr) = clients.radarr.clone() {
         tokio::spawn(async move {
-            send(&tx, DataMsg::RadarrLookup(radarr.lookup(&term).await.map_err(err_str)));
+            let result = radarr.lookup(&term).await.map_err(err_str);
+            send(&tx, DataMsg::RadarrLookup { seq, result });
         });
     }
 }
 
-pub fn lookup_series(tx: UnboundedSender<Event>, clients: Arc<Clients>, term: String) {
+pub fn lookup_series(tx: UnboundedSender<Event>, clients: Arc<Clients>, term: String, seq: u64) {
     if let Some(sonarr) = clients.sonarr.clone() {
         tokio::spawn(async move {
-            send(&tx, DataMsg::SonarrLookup(sonarr.lookup(&term).await.map_err(err_str)));
+            let result = sonarr.lookup(&term).await.map_err(err_str);
+            send(&tx, DataMsg::SonarrLookup { seq, result });
         });
     }
 }

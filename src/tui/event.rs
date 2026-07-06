@@ -30,8 +30,10 @@ pub enum DataMsg {
     RadarrMovies(Result<Vec<Movie>, String>),
     SonarrSeries(Result<Vec<Series>, String>),
 
-    RadarrLookup(Result<Vec<Movie>, String>),
-    SonarrLookup(Result<Vec<Series>, String>),
+    /// `seq` echoes SearchState::seq at request time; stale responses
+    /// (an older search finishing after a newer one) are dropped.
+    RadarrLookup { seq: u64, result: Result<Vec<Movie>, String> },
+    SonarrLookup { seq: u64, result: Result<Vec<Series>, String> },
     AddOptions(Result<(Vec<QualityProfile>, Vec<RootFolder>), String>),
 
     RadarrQueue(Result<Vec<QueueItem>, String>),

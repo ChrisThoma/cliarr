@@ -29,7 +29,7 @@ fn show(config_path: Option<&Path>, json: bool) -> Result<()> {
 }
 
 async fn init(config_path: Option<&Path>) -> Result<()> {
-    let mut config = Config::load(config_path).unwrap_or_default();
+    let mut config = Config::load_or_default(config_path)?;
     println!("cliarr setup: press Enter to skip a service or keep the current value.\n");
 
     if ask_service("Radarr")? {
@@ -89,7 +89,8 @@ fn ask_url(label: &str, current: Option<&str>, example: &str) -> Result<String> 
     }
 }
 
-fn ask_secret(label: &str, current: Option<&str>) -> Result<String> {
+/// Required value with visible input (usernames and the like).
+fn ask_required(label: &str, current: Option<&str>) -> Result<String> {
     let hint = if current.is_some() { " [keep current]" } else { "" };
     loop {
         let answer = prompt(&format!("  {label}{hint}: "))?;
@@ -103,9 +104,26 @@ fn ask_secret(label: &str, current: Option<&str>) -> Result<String> {
     }
 }
 
+/// Required value read without echoing (API keys, tokens, passwords).
+fn ask_secret(label: &str, current: Option<&str>) -> Result<String> {
+    let hint = if current.is_some() { " [keep current]" } else { "" };
+    loop {
+        let answer = rpassword::prompt_password(format!("  {label}{hint}: "))
+            .map_err(|e| crate::error::CliarrError::Other(format!("cannot read input: {e}")))?;
+        let answer = answer.trim().to_string();
+        if !answer.is_empty() {
+            return Ok(answer);
+        }
+        if let Some(c) = current {
+            return Ok(c.to_string());
+        }
+        eprintln!("  required");
+    }
+}
+
 fn ask_userpass(name: &str, current: Option<UserPassService>, example_url: &str) -> Result<UserPassService> {
     let url = ask_url(&format!("{name} URL"), current.as_ref().map(|c| c.url.as_str()), example_url)?;
-    let username = ask_secret(&format!("{name} username"), current.as_ref().map(|c| c.username.as_str()))?;
+    let username = ask_required(&format!("{name} username"), current.as_ref().map(|c| c.username.as_str()))?;
     let password = ask_secret(&format!("{name} password"), current.as_ref().map(|c| c.password.as_str()))?;
     Ok(UserPassService { url, username, password })
 }

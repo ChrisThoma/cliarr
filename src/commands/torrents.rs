@@ -18,7 +18,7 @@ pub async fn run(cmd: Option<TorrentsCmd>, clients: &Clients, json: bool) -> Res
             let mut t = output::table(&["hash", "name", "state", "progress", "size", "speed", "eta"]);
             for tor in &torrents {
                 t.add_row(vec![
-                    comfy_table::Cell::new(&tor.hash[..8.min(tor.hash.len())]),
+                    comfy_table::Cell::new(tor.hash.chars().take(8).collect::<String>()),
                     comfy_table::Cell::new(&tor.name),
                     comfy_table::Cell::new(&tor.state),
                     output::right(format!("{:.0}%", tor.progress * 100.0)),

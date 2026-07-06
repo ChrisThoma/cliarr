@@ -114,6 +114,8 @@ impl App {
     fn schedule_search(&mut self) {
         if self.search.input.trim().len() < MIN_QUERY_LEN {
             self.search.fire_at = None;
+            // Invalidate any in-flight lookups so they can't repopulate.
+            self.search.seq += 1;
             self.search.movies = Loadable::NotAsked;
             self.search.series = Loadable::NotAsked;
             self.search.selected = 0;
@@ -132,13 +134,14 @@ impl App {
             self.toast_err("neither radarr nor sonarr is configured");
             return;
         }
+        self.search.seq += 1;
         if self.clients.radarr.is_some() {
             self.search.movies = Loadable::Loading;
-            fetch::lookup_movies(self.tx.clone(), self.clients.clone(), term.clone());
+            fetch::lookup_movies(self.tx.clone(), self.clients.clone(), term.clone(), self.search.seq);
         }
         if self.clients.sonarr.is_some() {
             self.search.series = Loadable::Loading;
-            fetch::lookup_series(self.tx.clone(), self.clients.clone(), term);
+            fetch::lookup_series(self.tx.clone(), self.clients.clone(), term, self.search.seq);
         }
     }
 

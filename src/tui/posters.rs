@@ -119,16 +119,20 @@ impl PosterManager {
 
 async fn load_poster(http: &reqwest::Client, url: &str) -> Result<image::DynamicImage, String> {
     let path = cache::poster_path(url).map_err(|e| e.to_string())?;
-    let bytes = if path.exists() {
-        tokio::fs::read(&path).await.map_err(|e| e.to_string())?
-    } else {
-        let resp = http.get(url).send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("HTTP {}", resp.status()));
-        }
-        let bytes = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
-        let _ = tokio::fs::write(&path, &bytes).await;
-        bytes
-    };
-    image::load_from_memory(&bytes).map_err(|e| e.to_string())
+    if let Ok(bytes) = tokio::fs::read(&path).await
+        && let Ok(img) = image::load_from_memory(&bytes)
+    {
+        return Ok(img);
+    }
+    // Cache miss or corrupt entry: drop it and download fresh.
+    let _ = tokio::fs::remove_file(&path).await;
+    let resp = http.get(url).send().await.map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
+    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+    // Cache only after a successful decode so corrupt bytes never persist.
+    let _ = tokio::fs::write(&path, &bytes).await;
+    Ok(img)
 }

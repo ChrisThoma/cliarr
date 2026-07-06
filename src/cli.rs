@@ -23,10 +23,6 @@ pub struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
     pub config: Option<PathBuf>,
 
-    /// Disable colored output
-    #[arg(long, global = true, env = "NO_COLOR")]
-    pub no_color: bool,
-
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
