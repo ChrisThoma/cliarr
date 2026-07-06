@@ -10,9 +10,9 @@ It's two tools in one binary:
 ## Setup
 
 ```sh
-cargo build --release
-./target/release/cliarr config init     # interactive wizard, tests each connection
-./target/release/cliarr config test     # re-check connectivity any time
+cargo install --path .   # installs `cliarr` into ~/.cargo/bin (re-run after code changes)
+cliarr config init       # interactive wizard, tests each connection
+cliarr config test       # re-check connectivity any time
 ```
 
 Configuration lives at `~/.config/cliarr/config.toml` (written `0600`). Every service is optional — configure only what you run, and each has its own URL so services can live on different machines:
