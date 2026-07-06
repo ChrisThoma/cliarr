@@ -6,3 +6,8 @@ config.*.toml
 *.local.toml
 .env
 .env.*
+
+# locally installed agent skills — keep out of the public repo
+.agents/
+.claude/
+skills-lock.json
