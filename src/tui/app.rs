@@ -35,8 +35,8 @@ pub enum Tab {
 
 impl Tab {
     pub const ALL: [Tab; 6] = [
-        Tab::Dashboard,
         Tab::Search,
+        Tab::Dashboard,
         Tab::Library,
         Tab::Calendar,
         Tab::Downloads,
@@ -78,23 +78,25 @@ pub struct DashboardState {
 
 #[derive(Debug)]
 pub struct SearchState {
-    pub kind: MediaKind,
     pub input: String,
+    /// The omnibox starts live: type immediately on launch.
     pub editing: bool,
     pub movies: Loadable<Vec<Movie>>,
     pub series: Loadable<Vec<Series>>,
     pub selected: usize,
+    /// Tick at which the debounced live search should fire.
+    pub fire_at: Option<u64>,
 }
 
 impl Default for SearchState {
     fn default() -> Self {
         Self {
-            kind: MediaKind::Movies,
             input: String::new(),
-            editing: false,
+            editing: true,
             movies: Loadable::NotAsked,
             series: Loadable::NotAsked,
             selected: 0,
+            fire_at: None,
         }
     }
 }
@@ -230,7 +232,7 @@ impl App {
         Self {
             clients,
             tx,
-            tab: Tab::Dashboard,
+            tab: Tab::Search,
             should_quit: false,
             tick: 0,
             toast: None,
@@ -388,6 +390,11 @@ impl App {
 
     fn handle_tick(&mut self) {
         self.tick = self.tick.wrapping_add(1);
+        if let Some(at) = self.search.fire_at
+            && self.tick >= at {
+                self.search.fire_at = None;
+                self.run_search();
+            }
         if let Some((_, _, ttl)) = &mut self.toast {
             *ttl = ttl.saturating_sub(1);
             if *ttl == 0 {
@@ -602,9 +609,14 @@ impl App {
         match self.tab {
             Tab::Dashboard => {}
             Tab::Search => {
-                keys.push(("/", "edit query"));
-                keys.push(("m/s", "movies/series"));
-                keys.push(("a", "add"));
+                if self.search.editing {
+                    keys.push(("↑↓", "select"));
+                    keys.push(("Enter", "add"));
+                    keys.push(("Esc", "done typing"));
+                } else {
+                    keys.push(("/", "type"));
+                    keys.push(("a", "add"));
+                }
             }
             Tab::Library => {
                 keys.push(("m/s", "movies/series"));

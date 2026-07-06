@@ -5,7 +5,7 @@ A fast terminal client for your home media stack: **Radarr**, **Sonarr**, **Plex
 It's two tools in one binary:
 
 - **Scriptable subcommands** — `cliarr movie add`, `cliarr queue`, `cliarr torrents pause …` with `--json` output for piping.
-- **A full TUI** — run `cliarr` with no arguments for a dashboard, search-and-add flow, library browser, calendar, unified downloads view and missing-items screen. Poster art renders inline in terminals that support it (kitty, iTerm2, sixel) with a unicode fallback everywhere else.
+- **A full TUI** — run `cliarr` with no arguments and you land in a live search box: just start typing and merged movie + series results appear as you type (`cliarr dune` even launches with the search already running). Dashboard, library browser, calendar, unified downloads and missing-items screens sit behind tabs `2`–`6`. Poster art renders inline in terminals that support it (kitty, iTerm2, sixel) with a unicode fallback everywhere else.
 
 ## Setup
 
@@ -72,11 +72,12 @@ Exit codes: `0` ok · `1` API/network error · `2` config or usage error.
 
 | Key | Action |
 |-----|--------|
-| `1`–`6`, `Tab` | switch screen (Dashboard · Search · Library · Calendar · Downloads · Missing) |
-| `j`/`k`, `↑`/`↓` | move selection |
-| `/` | edit search query / filter library |
-| `m` / `s` | movies (Radarr) ↔ series (Sonarr) |
-| `a` | add selected search result (opens profile/root-folder picker) |
+| *type* | on the Search screen, results appear live as you type (movies + series merged) |
+| `1`–`6`, `Tab` | switch screen (Search · Dashboard · Library · Calendar · Downloads · Missing) |
+| `j`/`k`, `↑`/`↓` | move selection (arrows work even while typing) |
+| `Esc` | stop typing; `/` starts again |
+| `m` / `s` | movies ↔ series (Library screen) |
+| `a` / `Enter` | add selected search result (opens profile/root-folder picker) |
 | `S` / `A` | search for release(s) — selected / all missing |
 | `p` / `P` | pause / resume torrent or NZB |
 | `d` | delete (confirm dialog; `f` toggles delete-files) |

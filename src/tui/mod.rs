@@ -16,7 +16,7 @@ use crate::tui::app::App;
 use crate::tui::event::Event;
 use crate::tui::posters::PosterManager;
 
-pub async fn run(config: Config) -> Result<()> {
+pub async fn run(config: Config, initial_query: Option<String>) -> Result<()> {
     let clients = Arc::new(Clients::from_config(&config));
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
 
@@ -62,6 +62,9 @@ pub async fn run(config: Config) -> Result<()> {
     let mut terminal = ratatui::init();
     let mut app = App::new(clients, tx, posters);
     app.load_tab();
+    if let Some(query) = initial_query {
+        app.start_with_query(query);
+    }
 
     let result = loop {
         if let Err(e) = terminal.draw(|f| app.draw(f)) {

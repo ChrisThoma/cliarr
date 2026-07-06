@@ -7,9 +7,14 @@ use clap::{Parser, Subcommand, ValueEnum};
     name = "cliarr",
     version,
     about = "Manage Radarr, Sonarr, Plex, qBittorrent and NZBGet from the terminal",
-    long_about = "Manage Radarr, Sonarr, Plex, qBittorrent and NZBGet from the terminal.\n\nRun without a subcommand to launch the interactive TUI."
+    long_about = "Manage Radarr, Sonarr, Plex, qBittorrent and NZBGet from the terminal.\n\nRun without a subcommand to launch the interactive TUI.\nAny bare words launch the TUI already searching: `cliarr dune part two`.",
+    args_conflicts_with_subcommands = true
 )]
 pub struct Cli {
+    /// Search query — launches the TUI with this search already running
+    #[arg(value_name = "QUERY", trailing_var_arg = true)]
+    pub query: Vec<String>,
+
     /// Output JSON instead of tables
     #[arg(long, global = true)]
     pub json: bool,

@@ -21,7 +21,12 @@ async fn run(cli: Cli) -> Result<()> {
 
     let Some(command) = cli.command else {
         let config = Config::load(config_path)?;
-        return tui::run(config).await;
+        let query = if cli.query.is_empty() {
+            None
+        } else {
+            Some(cli.query.join(" "))
+        };
+        return tui::run(config, query).await;
     };
 
     // `config` must work before a config file exists.
