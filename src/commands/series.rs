@@ -71,7 +71,7 @@ pub async fn run(cmd: SeriesCmd, clients: &Clients, json: bool) -> Result<()> {
                 "✓ Added: {} ({}){}",
                 added.title,
                 added.year.map(|y| y.to_string()).unwrap_or_default(),
-                if no_search { "" } else { " — searching for episodes" }
+                if no_search { "" } else { "; searching for episodes" }
             );
         }
         SeriesCmd::List { filter } => {

@@ -5,7 +5,7 @@ pub enum CliarrError {
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
-    #[error("{service}: authentication failed — check the API key/credentials in your config")]
+    #[error("{service}: authentication failed; check the API key/credentials in your config")]
     Auth { service: &'static str },
 
     #[error("{service} returned HTTP {status}: {body}")]
@@ -18,7 +18,7 @@ pub enum CliarrError {
     #[error("config error: {0}")]
     Config(String),
 
-    #[error("{0} is not configured — run `cliarr config init` or edit the config file")]
+    #[error("{0} is not configured; run `cliarr config init` or edit the config file")]
     NotConfigured(&'static str),
 
     #[error("invalid URL: {0}")]

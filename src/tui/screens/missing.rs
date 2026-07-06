@@ -137,7 +137,7 @@ impl App {
             let msg = if loading {
                 format!("{} loading…", self.spinner())
             } else {
-                "nothing missing — library is complete".to_string()
+                "nothing missing, library is complete".to_string()
             };
             f.render_widget(Paragraph::new(msg).style(theme::dim()), inner);
             return;

@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 description = "A fast CLI/TUI for managing Radarr, Sonarr, Plex, qBittorrent and NZBGet over the LAN"
 license = "MIT"
+repository = "https://github.com/ChrisThoma/cliarr"
+readme = "README.md"
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }

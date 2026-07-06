@@ -138,7 +138,7 @@ impl App {
                 });
             }
             DownloadRow::Arr { .. } => {
-                self.toast_err("pause/resume applies to torrent/nzb rows — arr queue items follow their download client");
+                self.toast_err("pause/resume applies to torrent/nzb rows; arr queue items follow their download client");
             }
         }
     }

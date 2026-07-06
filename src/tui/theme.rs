@@ -1,4 +1,4 @@
-//! Dark, high-contrast palette with vibrant per-service accents.
+//! Dark, high-contrast palette with bold per-service accents.
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Padding};

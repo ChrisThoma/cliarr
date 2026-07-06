@@ -61,7 +61,7 @@ pub async fn run(cmd: MovieCmd, clients: &Clients, json: bool) -> Result<()> {
                 "✓ Added: {} ({}){}",
                 added.title,
                 added.year.map(|y| y.to_string()).unwrap_or_default(),
-                if no_search { "" } else { " — searching for release" }
+                if no_search { "" } else { "; searching for release" }
             );
         }
         MovieCmd::List { filter } => {
@@ -140,7 +140,7 @@ pub(crate) fn resolve_profile(
             .ok_or_else(|| {
                 let names: Vec<&str> = profiles.iter().map(|p| p.name.as_str()).collect();
                 CliarrError::Other(format!(
-                    "no quality profile \"{w}\" — available: {}",
+                    "no quality profile \"{w}\"; available: {}",
                     names.join(", ")
                 ))
             }),
@@ -160,7 +160,7 @@ pub(crate) fn resolve_root(
             .ok_or_else(|| {
                 let paths: Vec<&str> = roots.iter().map(|r| r.path.as_str()).collect();
                 CliarrError::Other(format!(
-                    "no root folder \"{w}\" — available: {}",
+                    "no root folder \"{w}\"; available: {}",
                     paths.join(", ")
                 ))
             }),

@@ -11,7 +11,7 @@ use clap::{Parser, Subcommand, ValueEnum};
     args_conflicts_with_subcommands = true
 )]
 pub struct Cli {
-    /// Search query — launches the TUI with this search already running
+    /// Search query; launches the TUI with this search already running
     #[arg(value_name = "QUERY", trailing_var_arg = true)]
     pub query: Vec<String>,
 

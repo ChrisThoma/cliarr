@@ -78,7 +78,7 @@ impl Config {
         let path = Self::path(override_path)?;
         let raw = std::fs::read_to_string(&path).map_err(|e| {
             CliarrError::Config(format!(
-                "cannot read {} ({e}) — run `cliarr config init` to create it",
+                "cannot read {} ({e}); run `cliarr config init` to create it",
                 path.display()
             ))
         })?;
@@ -104,7 +104,7 @@ impl Config {
         Ok(path)
     }
 
-    /// Redacted copy for `config show` — secrets replaced with asterisks.
+    /// Redacted copy for `config show`: secrets replaced with asterisks.
     pub fn redacted(&self) -> Self {
         fn mask(s: &str) -> String {
             if s.len() <= 4 {

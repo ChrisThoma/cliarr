@@ -30,7 +30,7 @@ fn show(config_path: Option<&Path>, json: bool) -> Result<()> {
 
 async fn init(config_path: Option<&Path>) -> Result<()> {
     let mut config = Config::load(config_path).unwrap_or_default();
-    println!("cliarr setup — press Enter to skip a service or keep the current value.\n");
+    println!("cliarr setup: press Enter to skip a service or keep the current value.\n");
 
     if ask_service("Radarr")? {
         let current = config.radarr.take();
