@@ -1,5 +1,12 @@
 # cliarr
 
+```
+┌─────────────────────────────┐
+│ > cliarr ▃                  │
+│   your media stack, one TUI │
+└─────────────────────────────┘
+```
+
 [![CI](https://github.com/ChrisThoma/cliarr/actions/workflows/ci.yml/badge.svg)](https://github.com/ChrisThoma/cliarr/actions/workflows/ci.yml)
 
 A fast terminal client for your home media stack: **Radarr**, **Sonarr**, **Plex**, **qBittorrent** and **NZBGet**, all over their LAN HTTP APIs. No SSH into the NAS required.
