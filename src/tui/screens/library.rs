@@ -1,0 +1,397 @@
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
+use ratatui::Frame;
+
+use crate::api::http::join_url;
+use crate::commands::output::fmt_bytes;
+use crate::tui::app::{App, ConfirmAction, MediaKind, Modal, move_selection};
+use crate::tui::event::Loadable;
+use crate::tui::{fetch, theme};
+
+impl App {
+    pub(crate) fn handle_filter_input(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc => {
+                self.library.filter.clear();
+                self.library.editing_filter = false;
+            }
+            KeyCode::Enter => self.library.editing_filter = false,
+            KeyCode::Backspace => {
+                self.library.filter.pop();
+            }
+            KeyCode::Char(c) => {
+                self.library.filter.push(c);
+                self.library.selected = 0;
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn library_key(&mut self, key: KeyEvent) {
+        let len = match self.library.kind {
+            MediaKind::Movies => self.filtered_movie_indices().len(),
+            MediaKind::Series => self.filtered_series_indices().len(),
+        };
+        match key.code {
+            KeyCode::Char('m') => {
+                self.library.kind = MediaKind::Movies;
+                self.library.selected = 0;
+            }
+            KeyCode::Char('s') => {
+                self.library.kind = MediaKind::Series;
+                self.library.selected = 0;
+            }
+            KeyCode::Char('/') => self.library.editing_filter = true,
+            KeyCode::Char('j') | KeyCode::Down => move_selection(&mut self.library.selected, 1, len),
+            KeyCode::Char('k') | KeyCode::Up => move_selection(&mut self.library.selected, -1, len),
+            KeyCode::Char('g') => self.library.selected = 0,
+            KeyCode::Char('G') => self.library.selected = len.saturating_sub(1),
+            KeyCode::Char('S') => self.library_search_release(),
+            KeyCode::Char('d') => self.library_delete(),
+            _ => {}
+        }
+    }
+
+    pub(crate) fn filtered_movie_indices(&self) -> Vec<usize> {
+        let filter = self.library.filter.to_lowercase();
+        self.movies
+            .ready()
+            .map(|movies| {
+                let mut idx: Vec<usize> = (0..movies.len())
+                    .filter(|&i| filter.is_empty() || movies[i].title.to_lowercase().contains(&filter))
+                    .collect();
+                idx.sort_by(|&a, &b| movies[a].title.to_lowercase().cmp(&movies[b].title.to_lowercase()));
+                idx
+            })
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn filtered_series_indices(&self) -> Vec<usize> {
+        let filter = self.library.filter.to_lowercase();
+        self.series
+            .ready()
+            .map(|series| {
+                let mut idx: Vec<usize> = (0..series.len())
+                    .filter(|&i| filter.is_empty() || series[i].title.to_lowercase().contains(&filter))
+                    .collect();
+                idx.sort_by(|&a, &b| series[a].title.to_lowercase().cmp(&series[b].title.to_lowercase()));
+                idx
+            })
+            .unwrap_or_default()
+    }
+
+    fn library_search_release(&mut self) {
+        match self.library.kind {
+            MediaKind::Movies => {
+                let indices = self.filtered_movie_indices();
+                let Some(m) = indices
+                    .get(self.library.selected)
+                    .and_then(|&i| self.movies.ready().and_then(|v| v.get(i)))
+                else {
+                    return;
+                };
+                let (id, title) = (m.id, m.title.clone());
+                let Some(radarr) = self.clients.radarr.clone() else { return };
+                fetch::action(self.tx.clone(), format!("searching for {title}"), async move {
+                    radarr.command("MoviesSearch", serde_json::json!({ "movieIds": [id] })).await
+                });
+            }
+            MediaKind::Series => {
+                let indices = self.filtered_series_indices();
+                let Some(s) = indices
+                    .get(self.library.selected)
+                    .and_then(|&i| self.series.ready().and_then(|v| v.get(i)))
+                else {
+                    return;
+                };
+                let (id, title) = (s.id, s.title.clone());
+                let Some(sonarr) = self.clients.sonarr.clone() else { return };
+                fetch::action(self.tx.clone(), format!("searching for {title}"), async move {
+                    sonarr.command("SeriesSearch", serde_json::json!({ "seriesId": id })).await
+                });
+            }
+        }
+    }
+
+    fn library_delete(&mut self) {
+        let (msg, action) = match self.library.kind {
+            MediaKind::Movies => {
+                let indices = self.filtered_movie_indices();
+                let Some(m) = indices
+                    .get(self.library.selected)
+                    .and_then(|&i| self.movies.ready().and_then(|v| v.get(i)))
+                else {
+                    return;
+                };
+                (
+                    format!("Remove \"{}\" from Radarr?", m.title),
+                    ConfirmAction::DeleteMovie { id: m.id, title: m.title.clone() },
+                )
+            }
+            MediaKind::Series => {
+                let indices = self.filtered_series_indices();
+                let Some(s) = indices
+                    .get(self.library.selected)
+                    .and_then(|&i| self.series.ready().and_then(|v| v.get(i)))
+                else {
+                    return;
+                };
+                (
+                    format!("Remove \"{}\" from Sonarr?", s.title),
+                    ConfirmAction::DeleteSeries { id: s.id, title: s.title.clone() },
+                )
+            }
+        };
+        self.modal = Some(Modal::Confirm {
+            msg,
+            toggle_label: Some("also delete files"),
+            toggle: false,
+            action,
+        });
+    }
+
+    pub(crate) fn draw_library(&mut self, f: &mut Frame, area: Rect) {
+        let show_filter = self.library.editing_filter || !self.library.filter.is_empty();
+        let (filter_area, body) = if show_filter {
+            let [fa, body] = Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).areas(area);
+            (Some(fa), body)
+        } else {
+            (None, area)
+        };
+
+        if let Some(fa) = filter_area {
+            let cursor = if self.library.editing_filter { "▏" } else { "" };
+            let block = theme::panel("Filter", theme::ACCENT, self.library.editing_filter);
+            let inner = block.inner(fa);
+            f.render_widget(block, fa);
+            f.render_widget(
+                Paragraph::new(Line::from(vec![
+                    Span::raw(self.library.filter.clone()),
+                    Span::styled(cursor, theme::accent_bold(theme::ACCENT)),
+                ])),
+                inner,
+            );
+        }
+
+        let [list_area, detail_area] =
+            Layout::horizontal([Constraint::Percentage(55), Constraint::Percentage(45)]).areas(body);
+
+        match self.library.kind {
+            MediaKind::Movies => self.draw_movie_list(f, list_area),
+            MediaKind::Series => self.draw_series_list(f, list_area),
+        }
+        self.draw_library_detail(f, detail_area);
+    }
+
+    fn draw_movie_list(&mut self, f: &mut Frame, area: Rect) {
+        let indices = self.filtered_movie_indices();
+        let title = format!("Movies ({})", indices.len());
+        let block = theme::panel(&title, theme::RADARR, true);
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+
+        match &self.movies {
+            Loadable::Ready(movies) => {
+                let items: Vec<ListItem> = indices
+                    .iter()
+                    .map(|&i| {
+                        let m = &movies[i];
+                        let status = if m.has_file.unwrap_or(false) {
+                            Span::styled("● ", theme::accent_bold(theme::SUCCESS))
+                        } else if m.monitored.unwrap_or(false) {
+                            Span::styled("◌ ", theme::accent_bold(theme::WARN))
+                        } else {
+                            Span::styled("· ", theme::dim())
+                        };
+                        ListItem::new(Line::from(vec![
+                            status,
+                            Span::raw(m.title.clone()),
+                            Span::styled(
+                                format!("  {}", m.year.map(|y| y.to_string()).unwrap_or_default()),
+                                theme::dim(),
+                            ),
+                        ]))
+                    })
+                    .collect();
+                let list = List::new(items)
+                    .highlight_style(theme::selected_row())
+                    .highlight_symbol(theme::SELECT_MARKER);
+                let mut state = ListState::default().with_selected(Some(self.library.selected));
+                f.render_stateful_widget(list, inner, &mut state);
+            }
+            Loadable::Loading => {
+                f.render_widget(
+                    Paragraph::new(format!("{} loading…", self.spinner())).style(theme::dim()),
+                    inner,
+                );
+            }
+            Loadable::Failed(e) => {
+                f.render_widget(
+                    Paragraph::new(e.clone()).style(theme::accent_bold(theme::ERROR)).wrap(Wrap { trim: true }),
+                    inner,
+                );
+            }
+            Loadable::NotAsked => {
+                f.render_widget(Paragraph::new("radarr not configured").style(theme::dim()), inner);
+            }
+        }
+    }
+
+    fn draw_series_list(&mut self, f: &mut Frame, area: Rect) {
+        let indices = self.filtered_series_indices();
+        let title = format!("Series ({})", indices.len());
+        let block = theme::panel(&title, theme::SONARR, true);
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+
+        match &self.series {
+            Loadable::Ready(series) => {
+                let items: Vec<ListItem> = indices
+                    .iter()
+                    .map(|&i| {
+                        let s = &series[i];
+                        let pct = s
+                            .statistics
+                            .as_ref()
+                            .and_then(|st| st.percent_of_episodes)
+                            .unwrap_or(0.0);
+                        let status = if pct >= 100.0 {
+                            Span::styled("● ", theme::accent_bold(theme::SUCCESS))
+                        } else if s.monitored.unwrap_or(false) {
+                            Span::styled("◌ ", theme::accent_bold(theme::WARN))
+                        } else {
+                            Span::styled("· ", theme::dim())
+                        };
+                        let eps = s
+                            .statistics
+                            .as_ref()
+                            .map(|st| {
+                                format!(
+                                    "  {}/{}",
+                                    st.episode_file_count.unwrap_or(0),
+                                    st.episode_count.unwrap_or(0)
+                                )
+                            })
+                            .unwrap_or_default();
+                        ListItem::new(Line::from(vec![
+                            status,
+                            Span::raw(s.title.clone()),
+                            Span::styled(eps, theme::dim()),
+                        ]))
+                    })
+                    .collect();
+                let list = List::new(items)
+                    .highlight_style(theme::selected_row())
+                    .highlight_symbol(theme::SELECT_MARKER);
+                let mut state = ListState::default().with_selected(Some(self.library.selected));
+                f.render_stateful_widget(list, inner, &mut state);
+            }
+            Loadable::Loading => {
+                f.render_widget(
+                    Paragraph::new(format!("{} loading…", self.spinner())).style(theme::dim()),
+                    inner,
+                );
+            }
+            Loadable::Failed(e) => {
+                f.render_widget(
+                    Paragraph::new(e.clone()).style(theme::accent_bold(theme::ERROR)).wrap(Wrap { trim: true }),
+                    inner,
+                );
+            }
+            Loadable::NotAsked => {
+                f.render_widget(Paragraph::new("sonarr not configured").style(theme::dim()), inner);
+            }
+        }
+    }
+
+    fn draw_library_detail(&mut self, f: &mut Frame, area: Rect) {
+        let accent = match self.library.kind {
+            MediaKind::Movies => theme::RADARR,
+            MediaKind::Series => theme::SONARR,
+        };
+        let block = theme::panel("Details", accent, false);
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+
+        let (title, meta, overview, poster): (String, String, String, Option<String>) =
+            match self.library.kind {
+                MediaKind::Movies => {
+                    let indices = self.filtered_movie_indices();
+                    let Some(m) = indices
+                        .get(self.library.selected)
+                        .and_then(|&i| self.movies.ready().and_then(|v| v.get(i)))
+                    else {
+                        return;
+                    };
+                    (
+                        format!("{} ({})", m.title, m.year.map(|y| y.to_string()).unwrap_or_default()),
+                        format!(
+                            "{} · {} · {}",
+                            if m.has_file.unwrap_or(false) { "downloaded" } else { "missing" },
+                            fmt_bytes(m.size_on_disk.unwrap_or(0) as f64),
+                            m.path.clone().unwrap_or_default(),
+                        ),
+                        m.overview.clone().unwrap_or_default(),
+                        self.arr_poster_url(true, m.poster_remote_url(), &m.images),
+                    )
+                }
+                MediaKind::Series => {
+                    let indices = self.filtered_series_indices();
+                    let Some(s) = indices
+                        .get(self.library.selected)
+                        .and_then(|&i| self.series.ready().and_then(|v| v.get(i)))
+                    else {
+                        return;
+                    };
+                    let stats = s
+                        .statistics
+                        .as_ref()
+                        .map(|st| {
+                            format!(
+                                "{}/{} episodes · {}",
+                                st.episode_file_count.unwrap_or(0),
+                                st.episode_count.unwrap_or(0),
+                                fmt_bytes(st.size_on_disk.unwrap_or(0) as f64)
+                            )
+                        })
+                        .unwrap_or_default();
+                    (
+                        format!("{} ({})", s.title, s.year.map(|y| y.to_string()).unwrap_or_default()),
+                        format!("{} · {stats}", s.status.clone().unwrap_or_default()),
+                        s.overview.clone().unwrap_or_default(),
+                        self.arr_poster_url(false, s.poster_remote_url(), &s.images),
+                    )
+                }
+            };
+
+        self.draw_media_detail(f, inner, &title, &meta, &overview, poster.as_deref());
+    }
+
+    /// Library items carry an arr-proxied relative `url`; prefer remoteUrl,
+    /// fall back to the proxied path joined onto the service base + api key.
+    fn arr_poster_url(
+        &self,
+        radarr: bool,
+        remote: Option<&str>,
+        images: &[crate::api::models::arr::Image],
+    ) -> Option<String> {
+        if let Some(r) = remote
+            && r.starts_with("http") {
+                return Some(r.to_string());
+            }
+        let core = if radarr {
+            self.clients.radarr.as_ref().map(|c| c.core().clone())
+        } else {
+            self.clients.sonarr.as_ref().map(|c| c.core().clone())
+        }?;
+        let rel = images
+            .iter()
+            .find(|i| i.cover_type == "poster")
+            .and_then(|i| i.url.as_deref())?;
+        let mut url = join_url(core.base_url(), rel).ok()?;
+        url.query_pairs_mut().append_pair("apikey", core.api_key());
+        Some(url.to_string())
+    }
+}

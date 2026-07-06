@@ -1,0 +1,8 @@
+/target
+
+# never commit real service configs or env files
+config.toml
+config.*.toml
+*.local.toml
+.env
+.env.*
