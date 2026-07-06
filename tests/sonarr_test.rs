@@ -16,6 +16,25 @@ fn client(server: &MockServer) -> SonarrClient {
 }
 
 #[tokio::test]
+async fn edit_series_puts_partial_update_to_editor() {
+    let server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .and(path("/api/v3/series/editor"))
+        .and(header("X-Api-Key", "test-key"))
+        .and(body_partial_json(json!({
+            "seriesIds": [7],
+            "qualityProfileId": 3,
+            "monitored": true
+        })))
+        .respond_with(ResponseTemplate::new(202).set_body_json(json!([])))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    client(&server).edit_series(7, 3, true).await.unwrap();
+}
+
+#[tokio::test]
 async fn lookup_deserializes_series() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))

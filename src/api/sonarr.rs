@@ -71,6 +71,17 @@ impl SonarrClient {
         self.core.post_json("/api/v3/series", &body).await
     }
 
+    /// Update library fields via the bulk editor endpoint: it accepts partial
+    /// updates, so we never round-trip (and truncate) the full series object.
+    pub async fn edit_series(&self, id: i64, quality_profile_id: i64, monitored: bool) -> Result<()> {
+        let body = json!({
+            "seriesIds": [id],
+            "qualityProfileId": quality_profile_id,
+            "monitored": monitored,
+        });
+        self.core.put("/api/v3/series/editor", &body).await
+    }
+
     pub async fn delete_series(&self, id: i64, delete_files: bool, add_exclusion: bool) -> Result<()> {
         self.core
             .delete(

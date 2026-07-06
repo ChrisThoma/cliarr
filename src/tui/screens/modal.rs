@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 
-use crate::tui::app::{AddField, App, ConfirmAction, Modal};
+use crate::tui::app::{AddField, App, ConfirmAction, EditField, Modal};
 use crate::tui::event::Loadable;
 use crate::tui::{fetch, theme};
 
@@ -45,6 +45,27 @@ impl App {
                     self.modal = Some(Modal::Add(add));
                 }
                 _ => self.modal = Some(Modal::Add(add)),
+            },
+            Some(Modal::Edit(mut edit)) => match key.code {
+                KeyCode::Esc => {}
+                KeyCode::Enter => self.execute_edit(edit),
+                KeyCode::Tab | KeyCode::Char('j') | KeyCode::Down => {
+                    edit.field = edit_field_next(edit.field);
+                    self.modal = Some(Modal::Edit(edit));
+                }
+                KeyCode::BackTab | KeyCode::Char('k') | KeyCode::Up => {
+                    edit.field = edit_field_prev(edit.field);
+                    self.modal = Some(Modal::Edit(edit));
+                }
+                KeyCode::Char('h') | KeyCode::Left => {
+                    edit_cycle(&mut edit, -1);
+                    self.modal = Some(Modal::Edit(edit));
+                }
+                KeyCode::Char('l') | KeyCode::Right | KeyCode::Char(' ') => {
+                    edit_cycle(&mut edit, 1);
+                    self.modal = Some(Modal::Edit(edit));
+                }
+                _ => self.modal = Some(Modal::Edit(edit)),
             },
         }
     }
@@ -136,6 +157,31 @@ impl App {
         }
     }
 
+    fn execute_edit(&mut self, edit: crate::tui::app::EditModal) {
+        let Loadable::Ready((profiles, _)) = &edit.options else {
+            self.modal = Some(Modal::Edit(edit));
+            return;
+        };
+        let Some(profile) = profiles.get(edit.profile_idx) else {
+            self.toast_err("no quality profile selected");
+            return;
+        };
+        let (id, profile_id, monitored) = (edit.id, profile.id, edit.monitored);
+        let tx = self.tx.clone();
+
+        if edit.is_movie {
+            let Some(radarr) = self.clients.radarr.clone() else { return };
+            fetch::action(tx, format!("updated {}", edit.title), async move {
+                radarr.edit_movie(id, profile_id, monitored).await
+            });
+        } else {
+            let Some(sonarr) = self.clients.sonarr.clone() else { return };
+            fetch::action(tx, format!("updated {}", edit.title), async move {
+                sonarr.edit_series(id, profile_id, monitored).await
+            });
+        }
+    }
+
     pub(crate) fn draw_modal(&mut self, f: &mut Frame, area: Rect) {
         let Some(modal) = &self.modal else { return };
         match modal {
@@ -221,6 +267,49 @@ impl App {
                 ));
                 f.render_widget(Paragraph::new(lines), inner);
             }
+            Modal::Edit(edit) => {
+                let rect = centered_rect(area, 62, 11);
+                f.render_widget(Clear, rect);
+                f.render_widget(Block::new().style(Style::new().bg(theme::SURFACE)), rect);
+                let title = format!("Edit · {}", edit.title);
+                let block = theme::panel(&title, theme::ACCENT, true);
+                let inner = block.inner(rect);
+                f.render_widget(block, rect);
+
+                let mut lines: Vec<Line> = Vec::new();
+                match &edit.options {
+                    Loadable::Ready((profiles, _)) => {
+                        let profile = profiles
+                            .get(edit.profile_idx)
+                            .map(|p| p.name.clone())
+                            .unwrap_or_default();
+                        lines.push(field_line(edit.field == EditField::Profile, "Quality profile", &format!("◂ {profile} ▸")));
+                        lines.push(field_line(
+                            edit.field == EditField::Monitored,
+                            "Monitored",
+                            if edit.monitored { "yes" } else { "no" },
+                        ));
+                        lines.push(Line::raw(""));
+                        let confirm_style = if edit.field == EditField::Confirm {
+                            theme::accent_bold(theme::SUCCESS)
+                        } else {
+                            theme::dim()
+                        };
+                        lines.push(Line::styled("[ Save ]  (Enter)", confirm_style));
+                    }
+                    Loadable::Loading => lines.push(Line::raw("loading profiles…")),
+                    Loadable::Failed(e) => {
+                        lines.push(Line::styled(e.clone(), theme::accent_bold(theme::ERROR)))
+                    }
+                    Loadable::NotAsked => {}
+                }
+                lines.push(Line::raw(""));
+                lines.push(Line::styled(
+                    "j/k fields · h/l change · Enter save · Esc cancel",
+                    theme::dim(),
+                ));
+                f.render_widget(Paragraph::new(lines), inner);
+            }
         }
     }
 }
@@ -280,6 +369,36 @@ fn add_cycle(add: &mut crate::tui::app::AddModal, delta: i64) {
     }
 }
 
+fn edit_field_next(f: EditField) -> EditField {
+    match f {
+        EditField::Profile => EditField::Monitored,
+        EditField::Monitored => EditField::Confirm,
+        EditField::Confirm => EditField::Profile,
+    }
+}
+
+fn edit_field_prev(f: EditField) -> EditField {
+    match f {
+        EditField::Profile => EditField::Confirm,
+        EditField::Monitored => EditField::Profile,
+        EditField::Confirm => EditField::Monitored,
+    }
+}
+
+fn edit_cycle(edit: &mut crate::tui::app::EditModal, delta: i64) {
+    let Loadable::Ready((profiles, _)) = &edit.options else { return };
+    match edit.field {
+        EditField::Profile => {
+            if !profiles.is_empty() {
+                let len = profiles.len() as i64;
+                edit.profile_idx = ((edit.profile_idx as i64 + delta).rem_euclid(len)) as usize;
+            }
+        }
+        EditField::Monitored => edit.monitored = !edit.monitored,
+        EditField::Confirm => {}
+    }
+}
+
 fn draw_help(f: &mut Frame, area: Rect) {
     let rect = centered_rect(area, 64, 20);
     f.render_widget(Clear, rect);
@@ -298,7 +417,7 @@ fn draw_help(f: &mut Frame, area: Rect) {
         ("↑/↓ · Enter", "select a result · add it to the library"),
         ("Esc", "stop typing (j/k, tabs work again)"),
         ("", ""),
-        ("Library:  ←/→", "movies/series · / filter · s search release · d delete"),
+        ("Library:  ←/→", "movies/series · / filter · s search release · e edit · d delete"),
         ("", ""),
         ("Downloads:  p / P", "pause / resume (qbit + nzbget)"),
         ("d", "delete download"),

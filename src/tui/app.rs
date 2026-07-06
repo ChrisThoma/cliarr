@@ -158,6 +158,7 @@ pub enum Modal {
         action: ConfirmAction,
     },
     Add(AddModal),
+    Edit(EditModal),
 }
 
 #[derive(Debug, Clone)]
@@ -204,6 +205,38 @@ impl AddModal {
                 s.year.map(|y| y.to_string()).unwrap_or_default()
             ),
             _ => String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditField {
+    Profile,
+    Monitored,
+    Confirm,
+}
+
+/// Edit an existing library item (quality profile, monitored).
+#[derive(Debug)]
+pub struct EditModal {
+    /// Radarr movie id when editing a movie, Sonarr series id otherwise.
+    pub id: i64,
+    pub is_movie: bool,
+    pub title: String,
+    pub options: Loadable<(Vec<QualityProfile>, Vec<RootFolder>)>,
+    /// Profile id the item currently has; selects the initial profile_idx
+    /// once the profile list arrives.
+    pub current_profile_id: Option<i64>,
+    pub profile_idx: usize,
+    pub monitored: bool,
+    pub field: EditField,
+}
+
+impl EditModal {
+    /// Point profile_idx at the item's current profile (once options load).
+    pub fn sync_profile_idx(&mut self) {
+        if let (Loadable::Ready((profiles, _)), Some(id)) = (&self.options, self.current_profile_id) {
+            self.profile_idx = profiles.iter().position(|p| p.id == id).unwrap_or(0);
         }
     }
 }
@@ -436,11 +469,14 @@ impl App {
                     self.search.selected = 0;
                 }
             }
-            DataMsg::AddOptions(r) => {
-                if let Some(Modal::Add(add)) = &mut self.modal {
-                    add.options.set(r);
+            DataMsg::AddOptions(r) => match &mut self.modal {
+                Some(Modal::Add(add)) => add.options.set(r),
+                Some(Modal::Edit(edit)) => {
+                    edit.options.set(r);
+                    edit.sync_profile_idx();
                 }
-            }
+                _ => {}
+            },
             DataMsg::RadarrQueue(r) => self.downloads.radarr_queue.set(r),
             DataMsg::SonarrQueue(r) => self.downloads.sonarr_queue.set(r),
             DataMsg::Torrents(r) => self.downloads.torrents.set(r),
@@ -629,6 +665,7 @@ impl App {
                 keys.push(("←/→", "movies/series"));
                 keys.push(("/", "filter"));
                 keys.push(("s", "search release"));
+                keys.push(("e", "edit"));
                 keys.push(("d", "delete"));
             }
             Tab::Calendar => {}

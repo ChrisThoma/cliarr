@@ -92,6 +92,7 @@ Exit codes: `0` ok · `1` API/network error · `2` config or usage error.
 | `←` / `→` | movies ↔ series (Library screen) |
 | `a` / `Enter` | add selected search result (opens profile/root-folder picker) |
 | `s` / `a` | search for release(s): selected / all missing |
+| `e` | edit library item (quality profile, monitored) |
 | `p` / `P` | pause / resume torrent or NZB |
 | `d` | delete (confirm dialog; `f` toggles delete-files) |
 | `b` | blocklist an arr queue item |

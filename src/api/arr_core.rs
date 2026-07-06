@@ -69,6 +69,20 @@ impl ArrCore {
         Ok(())
     }
 
+    /// PUT where we don't care about the response body.
+    pub async fn put(&self, path: &str, body: &serde_json::Value) -> Result<()> {
+        let url = join_url(&self.base, path)?;
+        let resp = self
+            .http
+            .put(url)
+            .header("X-Api-Key", &self.key)
+            .json(body)
+            .send()
+            .await?;
+        check(self.service, resp).await?;
+        Ok(())
+    }
+
     pub async fn delete(&self, path: &str, query: &[(&str, String)]) -> Result<()> {
         let url = join_url(&self.base, path)?;
         let resp = self

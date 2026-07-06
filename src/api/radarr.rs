@@ -68,6 +68,17 @@ impl RadarrClient {
         self.core.post_json("/api/v3/movie", &body).await
     }
 
+    /// Update library fields via the bulk editor endpoint: it accepts partial
+    /// updates, so we never round-trip (and truncate) the full movie object.
+    pub async fn edit_movie(&self, id: i64, quality_profile_id: i64, monitored: bool) -> Result<()> {
+        let body = json!({
+            "movieIds": [id],
+            "qualityProfileId": quality_profile_id,
+            "monitored": monitored,
+        });
+        self.core.put("/api/v3/movie/editor", &body).await
+    }
+
     pub async fn delete_movie(&self, id: i64, delete_files: bool, add_exclusion: bool) -> Result<()> {
         self.core
             .delete(

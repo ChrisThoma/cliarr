@@ -104,6 +104,25 @@ async fn add_movie_posts_expected_payload() {
 }
 
 #[tokio::test]
+async fn edit_movie_puts_partial_update_to_editor() {
+    let server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .and(path("/api/v3/movie/editor"))
+        .and(header("X-Api-Key", "test-key"))
+        .and(body_partial_json(json!({
+            "movieIds": [42],
+            "qualityProfileId": 7,
+            "monitored": false
+        })))
+        .respond_with(ResponseTemplate::new(202).set_body_json(json!([])))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    client(&server).edit_movie(42, 7, false).await.unwrap();
+}
+
+#[tokio::test]
 async fn unauthorized_maps_to_auth_error() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))

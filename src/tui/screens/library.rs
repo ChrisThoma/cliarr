@@ -6,7 +6,7 @@ use ratatui::Frame;
 
 use crate::api::http::join_url;
 use crate::commands::output::fmt_bytes;
-use crate::tui::app::{App, ConfirmAction, MediaKind, Modal, move_selection};
+use crate::tui::app::{App, ConfirmAction, EditField, EditModal, MediaKind, Modal, move_selection};
 use crate::tui::event::Loadable;
 use crate::tui::{fetch, theme};
 
@@ -49,6 +49,7 @@ impl App {
             KeyCode::Char('g') => self.library.selected = 0,
             KeyCode::Char('G') => self.library.selected = len.saturating_sub(1),
             KeyCode::Char('s') | KeyCode::Char('S') => self.library_search_release(),
+            KeyCode::Char('e') => self.library_edit(),
             KeyCode::Char('d') => self.library_delete(),
             _ => {}
         }
@@ -113,6 +114,44 @@ impl App {
                 });
             }
         }
+    }
+
+    /// Open the edit modal for the selected item, seeded with its current
+    /// profile/monitored values; profiles load async like the add modal.
+    fn library_edit(&mut self) {
+        let (id, is_movie, title, current_profile_id, monitored) = match self.library.kind {
+            MediaKind::Movies => {
+                let indices = self.filtered_movie_indices();
+                let Some(m) = indices
+                    .get(self.library.selected)
+                    .and_then(|&i| self.movies.ready().and_then(|v| v.get(i)))
+                else {
+                    return;
+                };
+                (m.id, true, m.title.clone(), m.quality_profile_id, m.monitored.unwrap_or(false))
+            }
+            MediaKind::Series => {
+                let indices = self.filtered_series_indices();
+                let Some(s) = indices
+                    .get(self.library.selected)
+                    .and_then(|&i| self.series.ready().and_then(|v| v.get(i)))
+                else {
+                    return;
+                };
+                (s.id, false, s.title.clone(), s.quality_profile_id, s.monitored.unwrap_or(false))
+            }
+        };
+        self.modal = Some(Modal::Edit(EditModal {
+            id,
+            is_movie,
+            title,
+            options: Loadable::Loading,
+            current_profile_id,
+            profile_idx: 0,
+            monitored,
+            field: EditField::Profile,
+        }));
+        fetch::add_options(self.tx.clone(), self.clients.clone(), is_movie);
     }
 
     fn library_delete(&mut self) {
