@@ -89,9 +89,9 @@ Exit codes: `0` ok · `1` API/network error · `2` config or usage error.
 | `1`–`6`, `Tab` | switch screen (Search · Dashboard · Library · Calendar · Downloads · Missing) |
 | `j`/`k`, `↑`/`↓` | move selection (arrows work even while typing) |
 | `Esc` | stop typing; `/` starts again |
-| `m` / `s` | movies ↔ series (Library screen) |
+| `←` / `→` | movies ↔ series (Library screen) |
 | `a` / `Enter` | add selected search result (opens profile/root-folder picker) |
-| `S` / `A` | search for release(s): selected / all missing |
+| `s` / `a` | search for release(s): selected / all missing |
 | `p` / `P` | pause / resume torrent or NZB |
 | `d` | delete (confirm dialog; `f` toggles delete-files) |
 | `b` | blocklist an arr queue item |

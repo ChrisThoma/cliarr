@@ -51,7 +51,7 @@ impl App {
             KeyCode::Char('k') | KeyCode::Up => {
                 move_selection(&mut self.missing.selected, -1, rows.len())
             }
-            KeyCode::Char('S') => {
+            KeyCode::Char('s') | KeyCode::Char('S') => {
                 let Some(row) = rows.into_iter().nth(self.missing.selected) else { return };
                 match row.service {
                     Service::Radarr => {
@@ -83,7 +83,7 @@ impl App {
                     _ => {}
                 }
             }
-            KeyCode::Char('A') => {
+            KeyCode::Char('a') | KeyCode::Char('A') => {
                 if let Some(radarr) = self.clients.radarr.clone() {
                     fetch::action(
                         self.tx.clone(),

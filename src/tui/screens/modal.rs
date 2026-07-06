@@ -298,13 +298,13 @@ fn draw_help(f: &mut Frame, area: Rect) {
         ("↑/↓ · Enter", "select a result · add it to the library"),
         ("Esc", "stop typing (j/k, tabs work again)"),
         ("", ""),
-        ("Library:  /", "filter · S search release · d delete"),
+        ("Library:  ←/→", "movies/series · / filter · s search release · d delete"),
         ("", ""),
         ("Downloads:  p / P", "pause / resume (qbit + nzbget)"),
         ("d", "delete download"),
         ("b", "blocklist arr queue item"),
         ("", ""),
-        ("Missing:  S / A", "search selected / search everything"),
+        ("Missing:  s / a", "search selected / search everything"),
     ];
     let lines: Vec<Line> = rows
         .iter()

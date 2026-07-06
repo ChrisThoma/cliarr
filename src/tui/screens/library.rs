@@ -35,11 +35,11 @@ impl App {
             MediaKind::Series => self.filtered_series_indices().len(),
         };
         match key.code {
-            KeyCode::Char('m') => {
+            KeyCode::Left | KeyCode::Char('h') => {
                 self.library.kind = MediaKind::Movies;
                 self.library.selected = 0;
             }
-            KeyCode::Char('s') => {
+            KeyCode::Right | KeyCode::Char('l') => {
                 self.library.kind = MediaKind::Series;
                 self.library.selected = 0;
             }
@@ -48,7 +48,7 @@ impl App {
             KeyCode::Char('k') | KeyCode::Up => move_selection(&mut self.library.selected, -1, len),
             KeyCode::Char('g') => self.library.selected = 0,
             KeyCode::Char('G') => self.library.selected = len.saturating_sub(1),
-            KeyCode::Char('S') => self.library_search_release(),
+            KeyCode::Char('s') | KeyCode::Char('S') => self.library_search_release(),
             KeyCode::Char('d') => self.library_delete(),
             _ => {}
         }

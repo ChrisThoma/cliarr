@@ -626,9 +626,9 @@ impl App {
                 }
             }
             Tab::Library => {
-                keys.push(("m/s", "movies/series"));
+                keys.push(("←/→", "movies/series"));
                 keys.push(("/", "filter"));
-                keys.push(("S", "search release"));
+                keys.push(("s", "search release"));
                 keys.push(("d", "delete"));
             }
             Tab::Calendar => {}
@@ -638,8 +638,8 @@ impl App {
                 keys.push(("b", "blocklist"));
             }
             Tab::Missing => {
-                keys.push(("S", "search selected"));
-                keys.push(("A", "search all"));
+                keys.push(("s", "search selected"));
+                keys.push(("a", "search all"));
             }
         }
         keys.push(("r", "refresh"));
