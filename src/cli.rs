@@ -6,8 +6,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 #[command(
     name = "cliarr",
     version,
-    about = "Manage Radarr, Sonarr, Plex, qBittorrent and NZBGet from the terminal",
-    long_about = "Manage Radarr, Sonarr, Plex, qBittorrent and NZBGet from the terminal.\n\nRun without a subcommand to launch the interactive TUI.\nAny bare words launch the TUI already searching: `cliarr dune part two`.",
+    about = "Manage your home media stack from the terminal",
+    long_about = "Manage your home media stack from the terminal.\n\nRun without a subcommand to launch the interactive TUI.\nAny bare words launch the TUI already searching: `cliarr dune part two`.",
     args_conflicts_with_subcommands = true
 )]
 pub struct Cli {

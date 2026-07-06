@@ -2,7 +2,7 @@
 name = "cliarr"
 version = "0.1.0"
 edition = "2024"
-description = "A fast CLI/TUI for managing Radarr, Sonarr, Plex, qBittorrent and NZBGet over the LAN"
+description = "A fast CLI/TUI for your home media stack"
 license = "MIT"
 repository = "https://github.com/ChrisThoma/cliarr"
 readme = "README.md"
