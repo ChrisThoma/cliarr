@@ -15,7 +15,7 @@ A fast terminal client for your home media stack: **Radarr**, **Sonarr**, **Plex
 
 ![cliarr demo: live search, dashboard, library and calendar](assets/demo.gif)
 
-*(The GIF shows the unicode poster fallback — in kitty, iTerm2 or a sixel terminal, posters render as crisp images.)*
+*(The GIF shows the unicode poster fallback; in kitty, iTerm2 or a sixel terminal, posters render as crisp images.)*
 
 If you run the arr stack on a NAS and live in a terminal, this is for you. One binary, one `config.toml`, try it in a minute:
 
@@ -26,7 +26,7 @@ cargo install cliarr && cliarr config init
 It's two tools in one binary:
 
 - **Scriptable subcommands:** `cliarr movie add`, `cliarr queue`, `cliarr torrents pause ...` with `--json` output for piping.
-- **A full TUI:** run `cliarr` with no arguments and you land in a live search box: just start typing and merged movie + series results appear as you type (`cliarr dune` even launches with the search already running). Dashboard, library browser, calendar, unified downloads and missing-items screens sit behind tabs `2`–`6`. Poster art renders inline in terminals that support it (kitty, iTerm2, sixel) with a unicode fallback everywhere else.
+- **A full TUI:** run `cliarr` with no arguments and you land in a live search box. Merged movie + series results appear as you type, and `cliarr dune` launches with the search already running. Dashboard, library browser, calendar, unified downloads and missing-items screens sit behind tabs `2`–`6`. Poster art renders inline in terminals that support it (kitty, iTerm2, sixel) with a unicode fallback everywhere else.
 
 ## Setup
 
@@ -47,7 +47,7 @@ cliarr update --check    # just report whether a newer version exists
 
 cliarr also checks for a new release at most once a day and prints a one-line notice on stderr when one exists. Set `CLIARR_NO_UPDATE_CHECK=1` to disable that check.
 
-Configuration is a single `config.toml` (written `0600`) in the platform config directory — `~/.config/cliarr/` on Linux, `~/Library/Application Support/cliarr/` on macOS, `%APPDATA%\cliarr\config\` on Windows. `cliarr config show` prints the exact path. Every service is optional: configure only what you run, and each has its own URL so services can live on different machines:
+Configuration is a single `config.toml` (written `0600`) in the platform config directory: `~/.config/cliarr/` on Linux, `~/Library/Application Support/cliarr/` on macOS, `%APPDATA%\cliarr\config\` on Windows. `cliarr config show` prints the exact path. Every service is optional: configure only what you run, and each has its own URL so services can live on different machines:
 
 ```toml
 [radarr]
@@ -116,7 +116,8 @@ Exit codes: `0` ok · `1` API/network error · `2` config or usage error.
 | `d` | delete (confirm dialog; `f` toggles delete-files) |
 | `b` | blocklist an arr queue item |
 | `r` | refresh current screen |
-| `?` | help · `q` quit |
+| `?` | help |
+| `q` | quit |
 
 The Downloads screen unifies the Radarr/Sonarr queues with qBittorrent and NZBGet and auto-refreshes every 5 seconds. Works with qBittorrent 4.x and 5.x (the WebAPI rename of pause/stop is detected automatically).
 

@@ -4,7 +4,8 @@ use std::collections::HashMap;
 
 use ratatui::layout::Rect;
 use ratatui::Frame;
-use ratatui_image::picker::Picker;
+use ratatui_image::picker::{Picker, ProtocolType};
+use ratatui_image::FontSize;
 use ratatui_image::protocol::StatefulProtocol;
 use ratatui_image::StatefulImage;
 use tokio::sync::mpsc::UnboundedSender;
@@ -34,16 +35,19 @@ pub struct PosterManager {
 }
 
 impl PosterManager {
-    /// Must run BEFORE the terminal enters raw mode/alternate screen: the
-    /// stdio query writes escape sequences and reads the reply.
+    /// Must run AFTER the terminal enters raw mode and BEFORE the input
+    /// reader spawns: the auto query talks over the shared tty, and running
+    /// inside raw mode makes any late termios restore from the query a
+    /// no-op instead of un-rawing the session.
     pub fn detect(setting: PosterProtocol, tx: UnboundedSender<Event>, http: reqwest::Client) -> Self {
         let picker = match setting {
             PosterProtocol::Off => None,
-            PosterProtocol::Auto => Picker::from_query_stdio().ok(),
+            PosterProtocol::Auto => query_in_subprocess(),
             forced => {
-                // Query for font size where possible; fall back to a typical
-                // cell size, then pin the protocol the user asked for.
-                let mut picker = Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks());
+                // Never query stdio here: the user already chose the
+                // protocol, and the query's only upside is a font-size
+                // guess. Take the typical-cell-size default and pin.
+                let mut picker = Picker::halfblocks();
                 picker.set_protocol_type(match forced {
                     PosterProtocol::Kitty => ratatui_image::picker::ProtocolType::Kitty,
                     PosterProtocol::Iterm2 => ratatui_image::picker::ProtocolType::Iterm2,
@@ -113,6 +117,80 @@ impl PosterManager {
                 true
             }
             _ => false,
+        }
+    }
+}
+
+/// Argv[1] sentinel for the internal protocol-query subprocess mode.
+pub const QUERY_ARG: &str = "__poster-query";
+
+/// Subprocess side of auto-detection: run the stdio query and report the
+/// result on stderr (stdout carries the escape-sequence dialogue with the
+/// terminal). Never returns.
+pub fn query_and_report() -> ! {
+    let Ok(picker) = Picker::from_query_stdio() else {
+        std::process::exit(1);
+    };
+    let proto = match picker.protocol_type() {
+        ProtocolType::Kitty => "kitty",
+        ProtocolType::Iterm2 => "iterm2",
+        ProtocolType::Sixel => "sixel",
+        ProtocolType::Halfblocks => "halfblocks",
+    };
+    let font = picker.font_size();
+    eprintln!("{proto} {} {}", font.width, font.height);
+    std::process::exit(0);
+}
+
+/// Run `Picker::from_query_stdio` in a killable child process sharing our
+/// tty. The in-process version leaks a thread blocked on stdin whenever the
+/// terminal never answers the query (ttyd, odd multiplexers); that thread
+/// then steals keystrokes and rewrites termios mid-session. A child can be
+/// waited on with a deadline, and its stuck reader dies with it.
+fn query_in_subprocess() -> Option<Picker> {
+    use std::io::Read;
+    use std::time::{Duration, Instant};
+
+    let exe = std::env::current_exe().ok()?;
+    let mut child = std::process::Command::new(exe)
+        .arg(QUERY_ARG)
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .ok()?;
+    let mut stderr = child.stderr.take()?;
+
+    // The child's own query timeout is 2s; give it headroom, then kill.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    return None;
+                }
+                let mut out = String::new();
+                stderr.read_to_string(&mut out).ok()?;
+                let mut parts = out.split_whitespace();
+                let proto = match parts.next()? {
+                    "kitty" => ProtocolType::Kitty,
+                    "iterm2" => ProtocolType::Iterm2,
+                    "sixel" => ProtocolType::Sixel,
+                    "halfblocks" => ProtocolType::Halfblocks,
+                    _ => return None,
+                };
+                let width = parts.next()?.parse().ok()?;
+                let height = parts.next()?.parse().ok()?;
+                #[allow(deprecated)] // reconstructing a query result, not guessing
+                let mut picker = Picker::from_fontsize(FontSize::new(width, height));
+                picker.set_protocol_type(proto);
+                return Some(picker);
+            }
+            Ok(None) if Instant::now() > deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(50)),
+            Err(_) => return None,
         }
     }
 }

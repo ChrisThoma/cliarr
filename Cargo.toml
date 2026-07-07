@@ -1,6 +1,6 @@
 [package]
 name = "cliarr"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.88"
 description = "A fast CLI/TUI for your home media stack"
@@ -38,6 +38,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 wiremock = "0.6"
+portable-pty = "0.9"
 
 [profile.release]
 lto = true

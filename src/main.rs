@@ -7,6 +7,12 @@ use cliarr::tui;
 
 #[tokio::main]
 async fn main() {
+    // Internal mode: the TUI re-invokes itself with this sentinel to run
+    // the poster protocol query in a killable process (see tui::posters).
+    if std::env::args().nth(1).as_deref() == Some(tui::posters::QUERY_ARG) {
+        tui::posters::query_and_report();
+    }
+
     let cli = Cli::parse_args();
     if let Err(e) = run(cli).await {
         eprintln!("error: {e}");

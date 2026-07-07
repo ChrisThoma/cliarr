@@ -37,14 +37,27 @@ pub async fn run(config: Config, initial_query: Option<String>) -> Result<()> {
     let clients = Arc::new(Clients::from_config(&config));
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
 
-    // Poster protocol detection must query stdio BEFORE raw mode/alt screen.
+    // Raw mode first: the poster query below may leak a thread that later
+    // restores the termios it saw on entry, so that snapshot must already
+    // be raw (see PosterManager::detect).
+    let mut terminal = ratatui::try_init()
+        .map_err(|e| CliarrError::Other(format!("cannot initialize the terminal: {e}")))?;
+
     let posters = PosterManager::detect(
         config.ui.poster_protocol,
         tx.clone(),
         crate::api::http::build_client(),
     );
 
-    // Input reader.
+    // A late reply to the poster query must not reach the app as key
+    // events; drain whatever is pending before the input reader starts.
+    if config.ui.poster_protocol == crate::config::PosterProtocol::Auto {
+        while crossterm::event::poll(std::time::Duration::from_millis(50)).unwrap_or(false) {
+            let _ = crossterm::event::read();
+        }
+    }
+
+    // Input reader: must spawn after the poster query, which reads stdin.
     let input_tx = tx.clone();
     tokio::spawn(async move {
         let mut events = crossterm::event::EventStream::new();
@@ -79,8 +92,6 @@ pub async fn run(config: Config, initial_query: Option<String>) -> Result<()> {
         }
     });
 
-    let mut terminal = ratatui::try_init()
-        .map_err(|e| CliarrError::Other(format!("cannot initialize the terminal: {e}")))?;
     let mut app = App::new(clients, tx, posters);
     app.load_tab();
     if let Some(query) = initial_query {
