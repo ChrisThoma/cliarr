@@ -8,6 +8,7 @@ pub mod plex_cmd;
 pub mod queue;
 pub mod series;
 pub mod torrents;
+pub mod update;
 
 use std::io::{IsTerminal, Write};
 

@@ -27,17 +27,20 @@ async fn run(cli: Cli) -> Result<()> {
         return tui::run(config, query).await;
     };
 
-    // `config` must work before a config file exists.
+    // `config` and `update` must work before a config file exists.
     if let Commands::Config { cmd } = command {
         return commands::config_cmd::run(cmd, config_path, cli.json).await;
+    }
+    if let Commands::Update { check } = command {
+        return commands::update::run(check, cli.json).await;
     }
 
     let config = Config::load(config_path)?;
     let clients = Clients::from_config(&config);
     let json = cli.json;
 
-    match command {
-        Commands::Config { .. } => unreachable!(),
+    let result = match command {
+        Commands::Config { .. } | Commands::Update { .. } => unreachable!(),
         Commands::Movie { cmd } => commands::movie::run(cmd, &clients, json).await,
         Commands::Series { cmd } => commands::series::run(cmd, &clients, json).await,
         Commands::Queue { cmd, service } => commands::queue::run(cmd, service, &clients, json).await,
@@ -46,5 +49,8 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Torrents { cmd } => commands::torrents::run(cmd, &clients, json).await,
         Commands::Nzb { cmd } => commands::nzb::run(cmd, &clients, json).await,
         Commands::Plex { cmd } => commands::plex_cmd::run(cmd, &clients, json).await,
-    }
+    };
+
+    cliarr::update::passive_check_and_notify().await;
+    result
 }

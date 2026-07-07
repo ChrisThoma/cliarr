@@ -30,6 +30,10 @@ pub async fn run(config: Config, initial_query: Option<String>) -> Result<()> {
         }
     }
 
+    // Refresh the daily update check while the user is in the TUI; the
+    // notice itself is printed after the terminal is restored.
+    tokio::spawn(crate::update::passive_refresh());
+
     let clients = Arc::new(Clients::from_config(&config));
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
 
@@ -99,5 +103,6 @@ pub async fn run(config: Config, initial_query: Option<String>) -> Result<()> {
     };
 
     ratatui::restore();
+    crate::update::print_notice_if_cached_newer();
     result
 }

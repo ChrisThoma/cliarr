@@ -26,7 +26,16 @@ cliarr config init       # interactive wizard, tests each connection
 cliarr config test       # re-check connectivity any time
 ```
 
-(Or from a clone: `cargo install --path .`. Requires Rust 1.88 or newer.)
+(Or from a clone: `cargo install --path .`. Requires Rust 1.88 or newer. Prebuilt binaries for macOS, Linux and Windows are on the [releases page](https://github.com/ChrisThoma/cliarr/releases).)
+
+### Updating
+
+```sh
+cliarr update            # download the latest release and replace the binary in place
+cliarr update --check    # just report whether a newer version exists
+```
+
+cliarr also checks for a new release at most once a day and prints a one-line notice on stderr when one exists. Set `CLIARR_NO_UPDATE_CHECK=1` to disable that check.
 
 Configuration is a single `config.toml` (written `0600`) in the platform config directory — `~/.config/cliarr/` on Linux, `~/Library/Application Support/cliarr/` on macOS, `%APPDATA%\cliarr\config\` on Windows. `cliarr config show` prints the exact path. Every service is optional: configure only what you run, and each has its own URL so services can live on different machines:
 

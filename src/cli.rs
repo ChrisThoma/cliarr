@@ -121,6 +121,12 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: PlexCmd,
     },
+    /// Update cliarr to the latest release
+    Update {
+        /// Only check for a new version; don't install
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -352,6 +358,13 @@ mod tests {
         let cli = parse(&["cliarr"]);
         assert!(cli.command.is_none());
         assert!(cli.query.is_empty());
+    }
+
+    #[test]
+    fn update_parses_as_a_subcommand_not_a_query() {
+        let cli = parse(&["cliarr", "update", "--check"]);
+        assert!(cli.query.is_empty());
+        assert!(matches!(cli.command, Some(Commands::Update { check: true })));
     }
 
     #[test]
