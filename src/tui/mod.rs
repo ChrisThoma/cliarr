@@ -31,15 +31,18 @@ pub async fn run(config: Config, initial_query: Option<String>) -> Result<()> {
     let input_tx = tx.clone();
     tokio::spawn(async move {
         let mut events = crossterm::event::EventStream::new();
-        while let Some(Ok(ev)) = events.next().await {
+        while let Some(ev) = events.next().await {
             let msg = match ev {
-                crossterm::event::Event::Key(key)
+                Ok(crossterm::event::Event::Key(key))
                     if key.kind != crossterm::event::KeyEventKind::Release =>
                 {
                     Event::Key(key)
                 }
-                crossterm::event::Event::Resize(_, _) => Event::Resize,
-                _ => continue,
+                Ok(crossterm::event::Event::Resize(_, _)) => Event::Resize,
+                Ok(_) => continue,
+                // The tty input stream died: a TUI that can't hear keys can't
+                // even be quit, so shut down instead of freezing.
+                Err(_) => Event::InputClosed,
             };
             if input_tx.send(msg).is_err() {
                 break;

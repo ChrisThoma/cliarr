@@ -15,6 +15,8 @@ pub enum Event {
     Tick,
     Data(DataMsg),
     Poster { url: String, result: Result<image::DynamicImage, String> },
+    /// The terminal input stream ended or errored; quit rather than freeze.
+    InputClosed,
 }
 
 /// Completed async fetches. Errors are pre-stringified so the message stays
@@ -50,6 +52,10 @@ pub enum DataMsg {
 
     /// A fire-and-forget action (add, delete, pause…) finished.
     ActionDone {
+        /// Tab the action was launched from; its data gets refreshed even if
+        /// the user has since switched tabs (a delete finishing on another
+        /// tab must not leave the originating tab stale).
+        origin: crate::tui::app::Tab,
         desc: String,
         result: Result<(), String>,
     },

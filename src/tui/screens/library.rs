@@ -18,6 +18,12 @@ impl App {
                 self.library.editing_filter = false;
             }
             KeyCode::Enter => self.library.editing_filter = false,
+            // Navigation keys still work while filtering (never trap them):
+            // leave the typed filter in place and re-dispatch the key.
+            KeyCode::Tab | KeyCode::BackTab | KeyCode::Up | KeyCode::Down => {
+                self.library.editing_filter = false;
+                self.handle(crate::tui::event::Event::Key(key));
+            }
             KeyCode::Backspace => {
                 self.library.filter.pop();
             }
@@ -95,7 +101,7 @@ impl App {
                 };
                 let (id, title) = (m.id, m.title.clone());
                 let Some(radarr) = self.clients.radarr.clone() else { return };
-                fetch::action(self.tx.clone(), format!("searching for {title}"), async move {
+                fetch::action(self.tx.clone(), self.tab, format!("searching for {title}"), async move {
                     radarr.command("MoviesSearch", serde_json::json!({ "movieIds": [id] })).await
                 });
             }
@@ -109,7 +115,7 @@ impl App {
                 };
                 let (id, title) = (s.id, s.title.clone());
                 let Some(sonarr) = self.clients.sonarr.clone() else { return };
-                fetch::action(self.tx.clone(), format!("searching for {title}"), async move {
+                fetch::action(self.tx.clone(), self.tab, format!("searching for {title}"), async move {
                     sonarr.command("SeriesSearch", serde_json::json!({ "seriesId": id })).await
                 });
             }

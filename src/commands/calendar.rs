@@ -62,7 +62,7 @@ pub async fn fetch(days: i64, clients: &Clients) -> Result<Vec<CalendarEntry>> {
             let date = e
                 .air_date_utc
                 .as_deref()
-                .and_then(parse_date)
+                .and_then(parse_local_date)
                 .map(|d| d.to_string())
                 .unwrap_or_default();
             entries.push(CalendarEntry {
@@ -81,4 +81,15 @@ pub async fn fetch(days: i64, clients: &Clients) -> Result<Vec<CalendarEntry>> {
 fn parse_date(s: &str) -> Option<NaiveDate> {
     // Dates arrive as either "2026-07-06" or full RFC3339 timestamps.
     s.get(..10).and_then(|d| d.parse().ok())
+}
+
+/// Air times are instants (e.g. "2026-07-07T01:00:00Z" for a 9pm ET airing);
+/// convert to the user's timezone so the episode lands on the right day.
+/// Radarr release dates stay on `parse_date`: they are calendar dates encoded
+/// as UTC midnight, which local conversion would shift to the previous day.
+fn parse_local_date(s: &str) -> Option<NaiveDate> {
+    match chrono::DateTime::parse_from_rfc3339(s) {
+        Ok(dt) => Some(dt.with_timezone(&Local).date_naive()),
+        Err(_) => parse_date(s),
+    }
 }

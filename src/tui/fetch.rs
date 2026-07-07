@@ -171,12 +171,14 @@ pub fn missing(tx: UnboundedSender<Event>, clients: Arc<Clients>) {
 }
 
 /// Fire-and-forget action; completion arrives as `ActionDone` for the toast.
-pub fn action<F>(tx: UnboundedSender<Event>, desc: String, fut: F)
+/// `origin` is the tab the action was launched from, so the right data gets
+/// refreshed even if the user switches tabs before it completes.
+pub fn action<F>(tx: UnboundedSender<Event>, origin: crate::tui::app::Tab, desc: String, fut: F)
 where
     F: std::future::Future<Output = crate::error::Result<()>> + Send + 'static,
 {
     tokio::spawn(async move {
         let result = fut.await.map_err(err_str);
-        send(&tx, DataMsg::ActionDone { desc, result });
+        send(&tx, DataMsg::ActionDone { origin, desc, result });
     });
 }

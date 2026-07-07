@@ -13,6 +13,15 @@ pub struct MissingEntry {
     pub detail: String,
 }
 
+/// Footer text that admits when only the first page is shown.
+fn count_note(what: &str, shown: usize, total: i64) -> String {
+    if (shown as i64) < total {
+        format!("{total} {what} (showing first {shown})")
+    } else {
+        format!("{total} {what}")
+    }
+}
+
 pub async fn run(service: ArrService, clients: &Clients, json: bool) -> Result<()> {
     let mut entries: Vec<MissingEntry> = Vec::new();
     let mut totals: Vec<String> = Vec::new();
@@ -20,7 +29,7 @@ pub async fn run(service: ArrService, clients: &Clients, json: bool) -> Result<(
     if matches!(service, ArrService::Radarr | ArrService::All) {
         if let Some(radarr) = &clients.radarr {
             let paged = radarr.missing().await?;
-            totals.push(format!("{} missing movies", paged.total_records));
+            totals.push(count_note("missing movies", paged.records.len(), paged.total_records));
             for m in paged.records {
                 entries.push(MissingEntry {
                     service: "radarr",
@@ -36,7 +45,7 @@ pub async fn run(service: ArrService, clients: &Clients, json: bool) -> Result<(
     if matches!(service, ArrService::Sonarr | ArrService::All) {
         if let Some(sonarr) = &clients.sonarr {
             let paged = sonarr.missing().await?;
-            totals.push(format!("{} missing episodes", paged.total_records));
+            totals.push(count_note("missing episodes", paged.records.len(), paged.total_records));
             for e in paged.records {
                 entries.push(MissingEntry {
                     service: "sonarr",

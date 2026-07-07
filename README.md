@@ -26,9 +26,9 @@ cliarr config init       # interactive wizard, tests each connection
 cliarr config test       # re-check connectivity any time
 ```
 
-(Or from a clone: `cargo install --path .`)
+(Or from a clone: `cargo install --path .`. Requires Rust 1.88 or newer.)
 
-Configuration lives at `~/.config/cliarr/config.toml` (written `0600`). Every service is optional: configure only what you run, and each has its own URL so services can live on different machines:
+Configuration is a single `config.toml` (written `0600`) in the platform config directory — `~/.config/cliarr/` on Linux, `~/Library/Application Support/cliarr/` on macOS, `%APPDATA%\cliarr\config\` on Windows. `cliarr config show` prints the exact path. Every service is optional: configure only what you run, and each has its own URL so services can live on different machines:
 
 ```toml
 [radarr]
@@ -108,7 +108,7 @@ cargo test      # wiremock-based API client tests, no live services needed
 cargo clippy
 ```
 
-Poster images are cached in `~/.cache/cliarr/posters/`.
+Poster images are cached under the platform cache directory (`~/.cache/cliarr/posters/` on Linux, `~/Library/Caches/cliarr/posters/` on macOS).
 
 ## License
 

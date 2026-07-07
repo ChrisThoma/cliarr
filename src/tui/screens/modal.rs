@@ -72,16 +72,17 @@ impl App {
 
     fn execute_confirm(&mut self, action: ConfirmAction, toggle: bool) {
         let tx = self.tx.clone();
+        let origin = self.tab;
         match action {
             ConfirmAction::DeleteMovie { id, title } => {
                 let Some(radarr) = self.clients.radarr.clone() else { return };
-                fetch::action(tx, format!("removed {title}"), async move {
+                fetch::action(tx, origin, format!("removed {title}"), async move {
                     radarr.delete_movie(id, toggle, false).await
                 });
             }
             ConfirmAction::DeleteSeries { id, title } => {
                 let Some(sonarr) = self.clients.sonarr.clone() else { return };
-                fetch::action(tx, format!("removed {title}"), async move {
+                fetch::action(tx, origin, format!("removed {title}"), async move {
                     sonarr.delete_series(id, toggle, false).await
                 });
             }
@@ -93,25 +94,25 @@ impl App {
                 };
                 if radarr {
                     let Some(client) = self.clients.radarr.clone() else { return };
-                    fetch::action(tx, desc, async move {
+                    fetch::action(tx, origin, desc, async move {
                         client.queue_delete(id, blocklist, true).await
                     });
                 } else {
                     let Some(client) = self.clients.sonarr.clone() else { return };
-                    fetch::action(tx, desc, async move {
+                    fetch::action(tx, origin, desc, async move {
                         client.queue_delete(id, blocklist, true).await
                     });
                 }
             }
             ConfirmAction::DeleteTorrent { hash, name } => {
                 let Some(qbit) = self.clients.qbit.clone() else { return };
-                fetch::action(tx, format!("deleted {name}"), async move {
+                fetch::action(tx, origin, format!("deleted {name}"), async move {
                     qbit.delete(&[hash], toggle).await
                 });
             }
             ConfirmAction::DeleteNzb { id, name } => {
                 let Some(nzbget) = self.clients.nzbget.clone() else { return };
-                fetch::action(tx, format!("deleted {name}"), async move {
+                fetch::action(tx, origin, format!("deleted {name}"), async move {
                     nzbget.delete(&[id]).await.map(|_| ())
                 });
             }
@@ -119,36 +120,53 @@ impl App {
     }
 
     fn execute_add(&mut self, add: crate::tui::app::AddModal) {
-        let Loadable::Ready((profiles, roots)) = &add.options else {
+        // Every early return must re-install the modal, or the user's
+        // choices silently vanish under a toast.
+        let picked = match &add.options {
+            Loadable::Ready((profiles, roots)) => {
+                match (profiles.get(add.profile_idx), roots.get(add.root_idx)) {
+                    (Some(p), Some(r)) => Some((p.id, r.path.clone())),
+                    (None, _) => {
+                        self.toast_err("the service has no quality profiles");
+                        None
+                    }
+                    (_, None) => {
+                        self.toast_err("the service has no root folders; add one in its settings");
+                        None
+                    }
+                }
+            }
+            // Options still loading (or failed): keep the modal up.
+            _ => None,
+        };
+        let Some((profile_id, root_path)) = picked else {
             self.modal = Some(Modal::Add(add));
             return;
         };
-        let Some(profile) = profiles.get(add.profile_idx) else {
-            self.toast_err("no quality profile selected");
-            return;
-        };
-        let Some(root) = roots.get(add.root_idx) else {
-            self.toast_err("no root folder selected");
-            return;
-        };
-        let (profile_id, root_path) = (profile.id, root.path.clone());
         let tx = self.tx.clone();
+        let origin = self.tab;
 
         if let Some(movie) = add.movie.clone() {
-            let Some(radarr) = self.clients.radarr.clone() else { return };
+            let Some(radarr) = self.clients.radarr.clone() else {
+                self.toast_err("radarr is not configured");
+                return;
+            };
             let title = movie.title.clone();
             let (monitored, search) = (add.monitored, add.search_on_add);
-            fetch::action(tx, format!("added {title}"), async move {
+            fetch::action(tx, origin, format!("added {title}"), async move {
                 radarr
                     .add_movie(&movie, profile_id, &root_path, monitored, search)
                     .await
                     .map(|_| ())
             });
         } else if let Some(series) = add.series.clone() {
-            let Some(sonarr) = self.clients.sonarr.clone() else { return };
+            let Some(sonarr) = self.clients.sonarr.clone() else {
+                self.toast_err("sonarr is not configured");
+                return;
+            };
             let title = series.title.clone();
             let (monitored, search) = (add.monitored, add.search_on_add);
-            fetch::action(tx, format!("added {title}"), async move {
+            fetch::action(tx, origin, format!("added {title}"), async move {
                 sonarr
                     .add_series(&series, profile_id, &root_path, monitored, true, search)
                     .await
@@ -158,25 +176,32 @@ impl App {
     }
 
     fn execute_edit(&mut self, edit: crate::tui::app::EditModal) {
-        let Loadable::Ready((profiles, _)) = &edit.options else {
+        let profile_id = match &edit.options {
+            Loadable::Ready((profiles, _)) => match profiles.get(edit.profile_idx) {
+                Some(p) => Some(p.id),
+                None => {
+                    self.toast_err("the service has no quality profiles");
+                    None
+                }
+            },
+            _ => None,
+        };
+        let Some(profile_id) = profile_id else {
             self.modal = Some(Modal::Edit(edit));
             return;
         };
-        let Some(profile) = profiles.get(edit.profile_idx) else {
-            self.toast_err("no quality profile selected");
-            return;
-        };
-        let (id, profile_id, monitored) = (edit.id, profile.id, edit.monitored);
+        let (id, monitored) = (edit.id, edit.monitored);
         let tx = self.tx.clone();
+        let origin = self.tab;
 
         if edit.is_movie {
             let Some(radarr) = self.clients.radarr.clone() else { return };
-            fetch::action(tx, format!("updated {}", edit.title), async move {
+            fetch::action(tx, origin, format!("updated {}", edit.title), async move {
                 radarr.edit_movie(id, profile_id, monitored).await
             });
         } else {
             let Some(sonarr) = self.clients.sonarr.clone() else { return };
-            fetch::action(tx, format!("updated {}", edit.title), async move {
+            fetch::action(tx, origin, format!("updated {}", edit.title), async move {
                 sonarr.edit_series(id, profile_id, monitored).await
             });
         }

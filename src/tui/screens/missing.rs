@@ -59,6 +59,7 @@ impl App {
                         let id = row.id;
                         fetch::action(
                             self.tx.clone(),
+                            self.tab,
                             format!("searching for {}", row.title),
                             async move {
                                 radarr
@@ -72,6 +73,7 @@ impl App {
                         let id = row.id;
                         fetch::action(
                             self.tx.clone(),
+                            self.tab,
                             format!("searching for {} {}", row.title, row.detail),
                             async move {
                                 sonarr
@@ -87,6 +89,7 @@ impl App {
                 if let Some(radarr) = self.clients.radarr.clone() {
                     fetch::action(
                         self.tx.clone(),
+                        self.tab,
                         "searching all missing movies".into(),
                         async move {
                             radarr
@@ -98,6 +101,7 @@ impl App {
                 if let Some(sonarr) = self.clients.sonarr.clone() {
                     fetch::action(
                         self.tx.clone(),
+                        self.tab,
                         "searching all missing episodes".into(),
                         async move {
                             sonarr

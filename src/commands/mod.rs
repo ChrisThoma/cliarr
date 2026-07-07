@@ -18,9 +18,13 @@ pub fn prompt(msg: &str) -> Result<String> {
     print!("{msg}");
     std::io::stdout().flush().ok();
     let mut line = String::new();
-    std::io::stdin()
+    let n = std::io::stdin()
         .read_line(&mut line)
         .map_err(|e| CliarrError::Other(format!("cannot read input: {e}")))?;
+    if n == 0 {
+        // EOF: erroring here keeps required-value loops from spinning forever.
+        return Err(CliarrError::Other("unexpected end of input".into()));
+    }
     Ok(line.trim().to_string())
 }
 
@@ -48,8 +52,9 @@ pub fn choose<'a, T>(what: &str, items: &'a [T], label: impl Fn(&T) -> String) -
     let idx: usize = answer
         .parse()
         .map_err(|_| CliarrError::Other(format!("invalid selection: {answer}")))?;
-    items
-        .get(idx.saturating_sub(1))
+    // The list is numbered from 1; reject 0 rather than mapping it to item 1.
+    idx.checked_sub(1)
+        .and_then(|i| items.get(i))
         .ok_or_else(|| CliarrError::Other(format!("invalid selection: {answer}")))
 }
 

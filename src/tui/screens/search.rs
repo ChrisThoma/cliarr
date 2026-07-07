@@ -75,6 +75,32 @@ impl App {
         hits
     }
 
+    /// Identity of the currently selected hit, stable across list rebuilds.
+    pub(crate) fn selected_search_key(&self) -> Option<(bool, String, Option<i32>)> {
+        let hits = self.search_hits();
+        hits.get(self.search.selected).map(|hit| match hit {
+            SearchHit::Movie(m) => (true, m.title.clone(), m.year),
+            SearchHit::Series(s) => (false, s.title.clone(), s.year),
+        })
+    }
+
+    /// Re-point the selection at the same hit after results changed
+    /// (the second service's reply re-interleaves the merged list).
+    pub(crate) fn restore_search_selection(&mut self, prev: Option<(bool, String, Option<i32>)>) {
+        let Some((is_movie, title, year)) = prev else {
+            self.search.selected = 0;
+            return;
+        };
+        self.search.selected = self
+            .search_hits()
+            .iter()
+            .position(|hit| match hit {
+                SearchHit::Movie(m) => is_movie && m.title == title && m.year == year,
+                SearchHit::Series(s) => !is_movie && s.title == title && s.year == year,
+            })
+            .unwrap_or(0);
+    }
+
     pub(crate) fn handle_search_input(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Esc => self.search.editing = false,

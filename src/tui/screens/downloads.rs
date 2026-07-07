@@ -10,6 +10,13 @@ use crate::tui::event::Loadable;
 use crate::tui::theme::{self, Service};
 use crate::tui::fetch;
 
+/// Stable identity of a download row across queue refreshes.
+pub(crate) enum DownloadKey {
+    Arr(Service, i64),
+    Torrent(String),
+    Nzb(i64),
+}
+
 /// One row in the unified downloads list.
 pub(crate) enum DownloadRow {
     Arr {
@@ -113,13 +120,42 @@ impl App {
         self.download_rows().into_iter().nth(self.downloads.selected)
     }
 
+    /// Identity of the currently selected row, stable across refreshes.
+    pub(crate) fn selected_download_key(&self) -> Option<DownloadKey> {
+        self.selected_row().map(|row| match row {
+            DownloadRow::Arr { service, id, .. } => DownloadKey::Arr(service, id),
+            DownloadRow::Torrent { hash, .. } => DownloadKey::Torrent(hash),
+            DownloadRow::Nzb { id, .. } => DownloadKey::Nzb(id),
+        })
+    }
+
+    /// Re-point the selection at the same download after a (possibly silent)
+    /// refresh shifted the rows; falls back to clamping into range.
+    pub(crate) fn restore_download_selection(&mut self, prev: Option<DownloadKey>) {
+        let rows = self.download_rows();
+        let found = prev.and_then(|key| {
+            rows.iter().position(|row| match (row, &key) {
+                (DownloadRow::Arr { service, id, .. }, DownloadKey::Arr(s, k)) => {
+                    service == s && id == k
+                }
+                (DownloadRow::Torrent { hash, .. }, DownloadKey::Torrent(h)) => hash == h,
+                (DownloadRow::Nzb { id, .. }, DownloadKey::Nzb(k)) => id == k,
+                _ => false,
+            })
+        });
+        self.downloads.selected = match found {
+            Some(pos) => pos,
+            None => self.downloads.selected.min(rows.len().saturating_sub(1)),
+        };
+    }
+
     fn downloads_pause_resume(&mut self, pause: bool) {
         let Some(row) = self.selected_row() else { return };
         let verb = if pause { "pausing" } else { "resuming" };
         match row {
             DownloadRow::Torrent { hash, name, .. } => {
                 let Some(qbit) = self.clients.qbit.clone() else { return };
-                fetch::action(self.tx.clone(), format!("{verb} {name}"), async move {
+                fetch::action(self.tx.clone(), self.tab, format!("{verb} {name}"), async move {
                     if pause {
                         qbit.pause(&[hash]).await
                     } else {
@@ -129,7 +165,7 @@ impl App {
             }
             DownloadRow::Nzb { id, name, .. } => {
                 let Some(nzbget) = self.clients.nzbget.clone() else { return };
-                fetch::action(self.tx.clone(), format!("{verb} {name}"), async move {
+                fetch::action(self.tx.clone(), self.tab, format!("{verb} {name}"), async move {
                     if pause {
                         nzbget.pause(&[id]).await.map(|_| ())
                     } else {

@@ -34,29 +34,29 @@ async fn init(config_path: Option<&Path>) -> Result<()> {
 
     if ask_service("Radarr")? {
         let current = config.radarr.take();
-        let url = ask_url("Radarr URL", current.as_ref().map(|c| c.url.as_str()), "http://nas.local:7878")?;
+        let url = ask_url("Radarr URL", current.as_ref().map(|c| c.url.as_str()), "http://localhost:7878")?;
         let api_key = ask_secret("Radarr API key (Settings → General)", current.as_ref().map(|c| c.api_key.as_str()))?;
         config.radarr = Some(ApiKeyService { url, api_key });
     }
     if ask_service("Sonarr")? {
         let current = config.sonarr.take();
-        let url = ask_url("Sonarr URL", current.as_ref().map(|c| c.url.as_str()), "http://nas.local:8989")?;
+        let url = ask_url("Sonarr URL", current.as_ref().map(|c| c.url.as_str()), "http://localhost:8989")?;
         let api_key = ask_secret("Sonarr API key (Settings → General)", current.as_ref().map(|c| c.api_key.as_str()))?;
         config.sonarr = Some(ApiKeyService { url, api_key });
     }
     if ask_service("Plex")? {
         let current = config.plex.take();
-        let url = ask_url("Plex URL", current.as_ref().map(|c| c.url.as_str()), "http://plexbox.local:32400")?;
+        let url = ask_url("Plex URL", current.as_ref().map(|c| c.url.as_str()), "http://localhost:32400")?;
         let token = ask_secret("Plex token (X-Plex-Token)", current.as_ref().map(|c| c.token.as_str()))?;
         config.plex = Some(TokenService { url, token });
     }
     if ask_service("qBittorrent")? {
         let current = config.qbittorrent.take();
-        config.qbittorrent = Some(ask_userpass("qBittorrent", current, "http://nas.local:8080")?);
+        config.qbittorrent = Some(ask_userpass("qBittorrent", current, "http://localhost:8080")?);
     }
     if ask_service("NZBGet")? {
         let current = config.nzbget.take();
-        config.nzbget = Some(ask_userpass("NZBGet", current, "http://nas.local:6789")?);
+        config.nzbget = Some(ask_userpass("NZBGet", current, "http://localhost:6789")?);
     }
 
     let path = config.save(config_path)?;
@@ -71,21 +71,29 @@ fn ask_service(name: &str) -> Result<bool> {
 }
 
 fn ask_url(label: &str, current: Option<&str>, example: &str) -> Result<String> {
-    let hint = current.unwrap_or(example);
     loop {
-        let answer = prompt(&format!("  {label} [{hint}]: "))?;
+        let hint = match current {
+            Some(c) => format!("[{c}]"),
+            None => format!("(e.g. {example})"),
+        };
+        let answer = prompt(&format!("  {label} {hint}: "))?;
         let value = if answer.is_empty() {
             match current {
                 Some(c) => c.to_string(),
-                None => example.to_string(),
+                None => {
+                    eprintln!("  required (e.g. {example})");
+                    continue;
+                }
             }
         } else {
             answer
         };
-        if url::Url::parse(&value).is_ok() {
-            return Ok(value);
+        // Bare Url::parse accepts "host:port" (scheme "host", no base), which
+        // would break every later request; insist on a real http(s) URL.
+        match url::Url::parse(&value) {
+            Ok(u) if matches!(u.scheme(), "http" | "https") && u.has_host() => return Ok(value),
+            _ => eprintln!("  must be a full http:// or https:// URL (e.g. {example})"),
         }
-        eprintln!("  not a valid URL, try again (e.g. {example})");
     }
 }
 

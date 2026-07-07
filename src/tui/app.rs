@@ -300,37 +300,42 @@ impl App {
     // ---- data loading ----------------------------------------------------
 
     /// Kick off the fetches the active tab needs (only if not yet asked).
+    ///
+    /// "Not yet asked" must be judged per configured service: an unconfigured
+    /// service's slot stays NotAsked forever, and gating on it would re-blank
+    /// the tab to Loading on every visit.
     pub fn load_tab(&mut self) {
-        match self.tab {
+        fn wanted<T>(configured: bool, slot: &Loadable<T>) -> bool {
+            configured && matches!(slot, Loadable::NotAsked)
+        }
+        let needs_refresh = match self.tab {
             Tab::Dashboard => {
-                if matches!(self.dash.radarr, Loadable::NotAsked)
-                    && matches!(self.dash.qbit, Loadable::NotAsked)
-                {
-                    self.refresh_tab();
-                }
                 self.ensure_library_loaded();
+                wanted(self.clients.radarr.is_some(), &self.dash.radarr)
+                    || wanted(self.clients.sonarr.is_some(), &self.dash.sonarr)
+                    || wanted(self.clients.plex.is_some(), &self.dash.plex)
+                    || wanted(self.clients.qbit.is_some(), &self.dash.qbit)
+                    || wanted(self.clients.nzbget.is_some(), &self.dash.nzbget)
             }
-            Tab::Library => self.ensure_library_loaded(),
-            Tab::Calendar => {
-                if matches!(self.calendar.entries, Loadable::NotAsked) {
-                    self.refresh_tab();
-                }
+            Tab::Library => {
+                self.ensure_library_loaded();
+                false
             }
+            Tab::Calendar => matches!(self.calendar.entries, Loadable::NotAsked),
             Tab::Downloads => {
-                if matches!(self.downloads.torrents, Loadable::NotAsked)
-                    && matches!(self.downloads.radarr_queue, Loadable::NotAsked)
-                {
-                    self.refresh_tab();
-                }
+                wanted(self.clients.radarr.is_some(), &self.downloads.radarr_queue)
+                    || wanted(self.clients.sonarr.is_some(), &self.downloads.sonarr_queue)
+                    || wanted(self.clients.qbit.is_some(), &self.downloads.torrents)
+                    || wanted(self.clients.nzbget.is_some(), &self.downloads.nzb)
             }
             Tab::Missing => {
-                if matches!(self.missing.radarr, Loadable::NotAsked)
-                    && matches!(self.missing.sonarr, Loadable::NotAsked)
-                {
-                    self.refresh_tab();
-                }
+                wanted(self.clients.radarr.is_some(), &self.missing.radarr)
+                    || wanted(self.clients.sonarr.is_some(), &self.missing.sonarr)
             }
-            Tab::Search => {}
+            Tab::Search => false,
+        };
+        if needs_refresh {
+            self.refresh_tab();
         }
     }
 
@@ -421,6 +426,7 @@ impl App {
             Event::Tick => self.handle_tick(),
             Event::Data(msg) => self.handle_data(msg),
             Event::Poster { url, result } => self.posters.on_loaded(&url, result),
+            Event::InputClosed => self.should_quit = true,
         }
     }
 
@@ -457,16 +463,21 @@ impl App {
             DataMsg::PlexSessions(r) => self.dash.sessions.set(r),
             DataMsg::RadarrMovies(r) => self.movies.set(r),
             DataMsg::SonarrSeries(r) => self.series.set(r),
+            // The two lookup replies for one search land at different times;
+            // re-anchor the selection so the slower service's results don't
+            // yank it off the item the user is about to act on.
             DataMsg::RadarrLookup { seq, result } => {
                 if seq == self.search.seq {
+                    let prev = self.selected_search_key();
                     self.search.movies.set(result);
-                    self.search.selected = 0;
+                    self.restore_search_selection(prev);
                 }
             }
             DataMsg::SonarrLookup { seq, result } => {
                 if seq == self.search.seq {
+                    let prev = self.selected_search_key();
                     self.search.series.set(result);
-                    self.search.selected = 0;
+                    self.restore_search_selection(prev);
                 }
             }
             DataMsg::AddOptions(r) => match &mut self.modal {
@@ -477,18 +488,37 @@ impl App {
                 }
                 _ => {}
             },
-            DataMsg::RadarrQueue(r) => self.downloads.radarr_queue.set(r),
-            DataMsg::SonarrQueue(r) => self.downloads.sonarr_queue.set(r),
-            DataMsg::Torrents(r) => self.downloads.torrents.set(r),
-            DataMsg::NzbGroups(r) => self.downloads.nzb.set(r),
+            // The downloads list silently refreshes every 5s; re-anchor the
+            // selection by row identity so a keypress racing the refresh
+            // can't pause/delete a row that shifted into the old position.
+            DataMsg::RadarrQueue(r) => {
+                let prev = self.selected_download_key();
+                self.downloads.radarr_queue.set(r);
+                self.restore_download_selection(prev);
+            }
+            DataMsg::SonarrQueue(r) => {
+                let prev = self.selected_download_key();
+                self.downloads.sonarr_queue.set(r);
+                self.restore_download_selection(prev);
+            }
+            DataMsg::Torrents(r) => {
+                let prev = self.selected_download_key();
+                self.downloads.torrents.set(r);
+                self.restore_download_selection(prev);
+            }
+            DataMsg::NzbGroups(r) => {
+                let prev = self.selected_download_key();
+                self.downloads.nzb.set(r);
+                self.restore_download_selection(prev);
+            }
             DataMsg::Calendar(r) => self.calendar.entries.set(r),
             DataMsg::RadarrMissing(r) => self.missing.radarr.set(r),
             DataMsg::SonarrMissing(r) => self.missing.sonarr.set(r),
-            DataMsg::ActionDone { desc, result } => {
+            DataMsg::ActionDone { origin, desc, result } => {
                 match result {
                     Ok(()) => {
                         self.toast_ok(format!("✓ {desc}"));
-                        self.after_action_refresh();
+                        self.after_action_refresh(origin);
                     }
                     Err(e) => self.toast_err(format!("✗ {desc}: {e}")),
                 }
@@ -496,13 +526,17 @@ impl App {
         }
     }
 
-    /// After a mutating action, re-fetch whatever the current tab shows.
-    fn after_action_refresh(&mut self) {
-        match self.tab {
+    /// After a mutating action, re-fetch the data of the tab it came from
+    /// (not the currently visible tab — the user may have switched away
+    /// while the action was in flight, and its data must not go stale).
+    fn after_action_refresh(&mut self, origin: Tab) {
+        match origin {
             Tab::Downloads => {
                 fetch::downloads(self.tx.clone(), self.clients.clone());
             }
-            Tab::Library => {
+            // Adds from Search change the library just like edits/deletes
+            // from Library do.
+            Tab::Library | Tab::Search => {
                 if self.clients.radarr.is_some() {
                     fetch::movies(self.tx.clone(), self.clients.clone());
                 }
@@ -511,7 +545,7 @@ impl App {
                 }
             }
             Tab::Missing => fetch::missing(self.tx.clone(), self.clients.clone()),
-            _ => {}
+            Tab::Dashboard | Tab::Calendar => {}
         }
     }
 
@@ -698,6 +732,13 @@ impl App {
             || self.missing.radarr.is_loading()
             || self.missing.sonarr.is_loading()
             || self.dash.radarr.is_loading()
+            || self.dash.sonarr.is_loading()
+            || self.dash.plex.is_loading()
+            || self.dash.qbit.is_loading()
+            || self.dash.nzbget.is_loading()
+            || self.dash.sessions.is_loading()
+            || matches!(&self.modal, Some(Modal::Add(a)) if a.options.is_loading())
+            || matches!(&self.modal, Some(Modal::Edit(e)) if e.options.is_loading())
     }
 }
 
