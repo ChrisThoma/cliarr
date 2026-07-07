@@ -247,6 +247,10 @@ pub struct App {
     pub tick: u64,
     pub toast: Option<(String, Color, u8)>,
     pub modal: Option<Modal>,
+    /// Bumped each time an add/edit modal opens; AddOptions responses
+    /// carrying an older seq belong to a closed/replaced modal and are
+    /// dropped (same pattern as SearchState::seq for lookups).
+    pub modal_seq: u64,
     pub posters: PosterManager,
 
     // Shared library data (dashboard counts + library screen).
@@ -271,6 +275,7 @@ impl App {
             tick: 0,
             toast: None,
             modal: None,
+            modal_seq: 0,
             posters,
             movies: Loadable::NotAsked,
             series: Loadable::NotAsked,
@@ -478,14 +483,18 @@ impl App {
                     self.restore_search_selection(prev);
                 }
             }
-            DataMsg::AddOptions(r) => match &mut self.modal {
-                Some(Modal::Add(add)) => add.options.set(r),
-                Some(Modal::Edit(edit)) => {
-                    edit.options.set(r);
-                    edit.sync_profile_idx();
+            DataMsg::AddOptions { seq, result } => {
+                if seq == self.modal_seq {
+                    match &mut self.modal {
+                        Some(Modal::Add(add)) => add.options.set(result),
+                        Some(Modal::Edit(edit)) => {
+                            edit.options.set(result);
+                            edit.sync_profile_idx();
+                        }
+                        _ => {}
+                    }
                 }
-                _ => {}
-            },
+            }
             // The downloads list silently refreshes every 5s; re-anchor the
             // selection by row identity so a keypress racing the refresh
             // can't pause/delete a row that shifted into the old position.
@@ -753,6 +762,43 @@ pub fn move_selection(selected: &mut usize, delta: i64, len: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::Clients;
+    use crate::config::{Config, PosterProtocol};
+    use crate::tui::posters::PosterManager;
+
+    fn app() -> App {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let posters =
+            PosterManager::detect(PosterProtocol::Off, tx.clone(), crate::api::http::build_client());
+        App::new(Arc::new(Clients::from_config(&Config::default())), tx, posters)
+    }
+
+    #[test]
+    fn add_options_for_a_replaced_modal_are_dropped() {
+        let mut app = app();
+        let movie: Movie =
+            serde_json::from_value(serde_json::json!({ "title": "Dune", "tmdbId": 1 })).unwrap();
+        // First modal opens (seq 1), then is closed and replaced (seq 2)
+        // before its options response lands.
+        app.modal_seq = 2;
+        app.modal = Some(Modal::Add(AddModal {
+            target: AddTarget::Movie(movie),
+            options: Loadable::Loading,
+            profile_idx: 0,
+            root_idx: 0,
+            field: AddField::Profile,
+            monitored: true,
+            search_on_add: true,
+        }));
+
+        app.handle_data(DataMsg::AddOptions { seq: 1, result: Ok((vec![], vec![])) });
+        let Some(Modal::Add(add)) = &app.modal else { panic!("modal gone") };
+        assert!(add.options.is_loading(), "stale response must not populate the new modal");
+
+        app.handle_data(DataMsg::AddOptions { seq: 2, result: Ok((vec![], vec![])) });
+        let Some(Modal::Add(add)) = &app.modal else { panic!("modal gone") };
+        assert!(add.options.ready().is_some(), "current response must apply");
+    }
 
     #[test]
     fn add_modal_title_formats_both_target_kinds() {

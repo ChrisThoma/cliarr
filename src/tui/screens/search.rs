@@ -212,7 +212,8 @@ impl App {
             self.toast_err(format!("\"{title}\" is already in the library"));
             return;
         }
-        fetch::add_options(self.tx.clone(), self.clients.clone(), for_movies);
+        self.modal_seq += 1;
+        fetch::add_options(self.tx.clone(), self.clients.clone(), for_movies, self.modal_seq);
         self.modal = Some(Modal::Add(AddModal {
             target,
             options: Loadable::Loading,

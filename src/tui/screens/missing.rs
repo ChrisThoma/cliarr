@@ -136,14 +136,24 @@ impl App {
         let inner = block.inner(area);
         f.render_widget(block, area);
 
+        let mut errors = Vec::new();
+        if let Some(e) = self.missing.radarr.failed() {
+            errors.push(format!("radarr: {e}"));
+        }
+        if let Some(e) = self.missing.sonarr.failed() {
+            errors.push(format!("sonarr: {e}"));
+        }
+        let inner = super::draw_fetch_errors(f, inner, &errors);
+
         let loading = self.missing.radarr.is_loading() || self.missing.sonarr.is_loading();
         if rows.is_empty() {
-            let msg = if loading {
-                format!("{} loading…", self.spinner())
-            } else {
-                "nothing missing, library is complete".to_string()
-            };
-            f.render_widget(Paragraph::new(msg).style(theme::dim()), inner);
+            if loading {
+                let msg = format!("{} loading…", self.spinner());
+                f.render_widget(Paragraph::new(msg).style(theme::dim()), inner);
+            } else if errors.is_empty() {
+                let msg = "nothing missing, library is complete";
+                f.render_widget(Paragraph::new(msg).style(theme::dim()), inner);
+            }
             return;
         }
 
@@ -162,5 +172,87 @@ impl App {
             .highlight_symbol(theme::SELECT_MARKER);
         let mut state = ListState::default().with_selected(Some(self.missing.selected));
         f.render_stateful_widget(list, inner, &mut state);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::api::models::arr::Paged;
+    use crate::api::models::radarr::Movie;
+    use crate::api::Clients;
+    use crate::config::{Config, PosterProtocol};
+    use crate::tui::posters::PosterManager;
+
+    fn app() -> App {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let posters =
+            PosterManager::detect(PosterProtocol::Off, tx.clone(), crate::api::http::build_client());
+        App::new(Arc::new(Clients::from_config(&Config::default())), tx, posters)
+    }
+
+    fn render_missing(app: &mut App) -> String {
+        let backend = ratatui::backend::TestBackend::new(80, 10);
+        let mut term = ratatui::Terminal::new(backend).unwrap();
+        term.draw(|f| app.draw_missing(f, f.area())).unwrap();
+        term.backend().to_string()
+    }
+
+    fn paged(titles: &[&str]) -> Paged<Movie> {
+        Paged {
+            page: 1,
+            page_size: 50,
+            total_records: titles.len() as i64,
+            records: titles
+                .iter()
+                .map(|t| {
+                    serde_json::from_value(serde_json::json!({ "title": t, "tmdbId": 1 })).unwrap()
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn failed_fetch_is_not_reported_as_complete_library() {
+        let mut app = app();
+        app.missing.radarr = Loadable::Failed("connection refused".into());
+        app.missing.sonarr = Loadable::Ready(Paged {
+            page: 1,
+            page_size: 50,
+            total_records: 0,
+            records: vec![],
+        });
+
+        let out = render_missing(&mut app);
+        assert!(out.contains("radarr: connection refused"), "error must be shown: {out}");
+        assert!(!out.contains("library is complete"), "failure must not read as complete: {out}");
+    }
+
+    #[test]
+    fn partial_failure_shows_error_and_surviving_rows() {
+        let mut app = app();
+        app.missing.radarr = Loadable::Ready(paged(&["Dune"]));
+        app.missing.sonarr = Loadable::Failed("timeout".into());
+
+        let out = render_missing(&mut app);
+        assert!(out.contains("sonarr: timeout"), "error line expected: {out}");
+        assert!(out.contains("Dune"), "working service's rows still expected: {out}");
+    }
+
+    #[test]
+    fn empty_and_ready_still_reads_as_complete() {
+        let mut app = app();
+        app.missing.radarr = Loadable::Ready(paged(&[]));
+        app.missing.sonarr = Loadable::Ready(Paged {
+            page: 1,
+            page_size: 50,
+            total_records: 0,
+            records: vec![],
+        });
+
+        let out = render_missing(&mut app);
+        assert!(out.contains("library is complete"), "genuinely empty stays friendly: {out}");
     }
 }

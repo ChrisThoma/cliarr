@@ -36,7 +36,13 @@ pub enum DataMsg {
     /// (an older search finishing after a newer one) are dropped.
     RadarrLookup { seq: u64, result: Result<Vec<Movie>, String> },
     SonarrLookup { seq: u64, result: Result<Vec<Series>, String> },
-    AddOptions(Result<(Vec<QualityProfile>, Vec<RootFolder>), String>),
+    /// `seq` echoes App::modal_seq at request time; a response for a modal
+    /// that has since been closed or replaced is dropped, so a slow Radarr
+    /// reply can't populate a newly opened Sonarr modal (or vice versa).
+    AddOptions {
+        seq: u64,
+        result: Result<(Vec<QualityProfile>, Vec<RootFolder>), String>,
+    },
 
     RadarrQueue(Result<Vec<QueueItem>, String>),
     SonarrQueue(Result<Vec<QueueItem>, String>),
@@ -81,6 +87,13 @@ impl<T> Loadable<T> {
 
     pub fn is_loading(&self) -> bool {
         matches!(self, Loadable::Loading)
+    }
+
+    pub fn failed(&self) -> Option<&str> {
+        match self {
+            Loadable::Failed(e) => Some(e),
+            _ => None,
+        }
     }
 
     pub fn set(&mut self, result: Result<T, String>) {

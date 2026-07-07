@@ -96,8 +96,9 @@ pub fn lookup_series(tx: UnboundedSender<Event>, clients: Arc<Clients>, term: St
     }
 }
 
-/// Quality profiles + root folders for the add modal.
-pub fn add_options(tx: UnboundedSender<Event>, clients: Arc<Clients>, for_movies: bool) {
+/// Quality profiles + root folders for the add/edit modal. `seq` identifies
+/// the modal this fetch belongs to; the handler drops stale responses.
+pub fn add_options(tx: UnboundedSender<Event>, clients: Arc<Clients>, for_movies: bool, seq: u64) {
     tokio::spawn(async move {
         let result = if for_movies {
             match clients.radarr() {
@@ -110,7 +111,7 @@ pub fn add_options(tx: UnboundedSender<Event>, clients: Arc<Clients>, for_movies
                 Err(e) => Err(e),
             }
         };
-        send(&tx, DataMsg::AddOptions(result.map_err(err_str)));
+        send(&tx, DataMsg::AddOptions { seq, result: result.map_err(err_str) });
     });
 }
 

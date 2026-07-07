@@ -232,16 +232,33 @@ impl App {
         let inner = block.inner(area);
         f.render_widget(block, area);
 
-        let loading = self.downloads.torrents.is_loading()
-            || self.downloads.radarr_queue.is_loading()
+        let mut errors = Vec::new();
+        if let Some(e) = self.downloads.radarr_queue.failed() {
+            errors.push(format!("radarr: {e}"));
+        }
+        if let Some(e) = self.downloads.sonarr_queue.failed() {
+            errors.push(format!("sonarr: {e}"));
+        }
+        if let Some(e) = self.downloads.torrents.failed() {
+            errors.push(format!("qbit: {e}"));
+        }
+        if let Some(e) = self.downloads.nzb.failed() {
+            errors.push(format!("nzbget: {e}"));
+        }
+        let inner = super::draw_fetch_errors(f, inner, &errors);
+
+        let loading = self.downloads.radarr_queue.is_loading()
+            || self.downloads.sonarr_queue.is_loading()
+            || self.downloads.torrents.is_loading()
             || self.downloads.nzb.is_loading();
         if rows.is_empty() {
-            let msg = if loading {
-                format!("{} loading…", self.spinner())
-            } else {
-                "no active downloads".to_string()
-            };
-            f.render_widget(Paragraph::new(msg).style(theme::dim()), inner);
+            if loading {
+                let msg = format!("{} loading…", self.spinner());
+                f.render_widget(Paragraph::new(msg).style(theme::dim()), inner);
+            } else if errors.is_empty() {
+                let msg = "no active downloads";
+                f.render_widget(Paragraph::new(msg).style(theme::dim()), inner);
+            }
             return;
         }
 
@@ -308,4 +325,61 @@ fn progress_bar(row: &DownloadRow, width: usize) -> String {
         "█".repeat(filled.min(width)),
         "░".repeat(width.saturating_sub(filled))
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::api::Clients;
+    use crate::config::{Config, PosterProtocol};
+    use crate::tui::posters::PosterManager;
+
+    fn app() -> App {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let posters =
+            PosterManager::detect(PosterProtocol::Off, tx.clone(), crate::api::http::build_client());
+        App::new(Arc::new(Clients::from_config(&Config::default())), tx, posters)
+    }
+
+    fn render_downloads(app: &mut App) -> String {
+        let backend = ratatui::backend::TestBackend::new(80, 10);
+        let mut term = ratatui::Terminal::new(backend).unwrap();
+        term.draw(|f| app.draw_downloads(f, f.area())).unwrap();
+        term.backend().to_string()
+    }
+
+    #[test]
+    fn sonarr_only_loading_shows_spinner_not_empty_message() {
+        let mut app = app();
+        app.downloads.sonarr_queue = Loadable::Loading;
+
+        let out = render_downloads(&mut app);
+        assert!(out.contains("loading"), "sonarr load in flight must read as loading: {out}");
+        assert!(!out.contains("no active downloads"), "must not claim empty while loading: {out}");
+    }
+
+    #[test]
+    fn failed_queues_are_reported_not_hidden() {
+        let mut app = app();
+        app.downloads.sonarr_queue = Loadable::Failed("connection refused".into());
+        app.downloads.torrents = Loadable::Ready(vec![]);
+
+        let out = render_downloads(&mut app);
+        assert!(out.contains("sonarr: connection refused"), "error must be shown: {out}");
+        assert!(!out.contains("no active downloads"), "failure must not read as empty: {out}");
+    }
+
+    #[test]
+    fn all_ready_and_empty_reads_as_no_active_downloads() {
+        let mut app = app();
+        app.downloads.radarr_queue = Loadable::Ready(vec![]);
+        app.downloads.sonarr_queue = Loadable::Ready(vec![]);
+        app.downloads.torrents = Loadable::Ready(vec![]);
+        app.downloads.nzb = Loadable::Ready(vec![]);
+
+        let out = render_downloads(&mut app);
+        assert!(out.contains("no active downloads"), "genuinely empty stays friendly: {out}");
+    }
 }

@@ -128,7 +128,8 @@ impl App {
             monitored,
             field: EditField::Profile,
         }));
-        fetch::add_options(self.tx.clone(), self.clients.clone(), is_movie);
+        self.modal_seq += 1;
+        fetch::add_options(self.tx.clone(), self.clients.clone(), is_movie, self.modal_seq);
     }
 
     fn library_delete(&mut self) {
