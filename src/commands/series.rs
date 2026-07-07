@@ -13,7 +13,7 @@ pub async fn run(cmd: SeriesCmd, clients: &Clients, json: bool) -> Result<()> {
                 return output::print_json(&results);
             }
             if results.is_empty() {
-                println!("no results for \"{query}\"");
+                crate::outln!("no results for \"{query}\"");
                 return Ok(());
             }
             let mut t = output::table(&["title", "year", "tvdb", "status", "network", "in library"]);
@@ -27,7 +27,7 @@ pub async fn run(cmd: SeriesCmd, clients: &Clients, json: bool) -> Result<()> {
                     if s.id > 0 { "✓".into() } else { String::new() },
                 ]);
             }
-            println!("{t}");
+            crate::outln!("{t}");
         }
         SeriesCmd::Add {
             tvdb_id,
@@ -67,7 +67,7 @@ pub async fn run(cmd: SeriesCmd, clients: &Clients, json: bool) -> Result<()> {
             if json {
                 return output::print_json(&added);
             }
-            println!(
+            crate::outln!(
                 "✓ Added: {} ({}){}",
                 added.title,
                 added.year.map(|y| y.to_string()).unwrap_or_default(),
@@ -117,8 +117,8 @@ pub async fn run(cmd: SeriesCmd, clients: &Clients, json: bool) -> Result<()> {
                     output::right(size),
                 ]);
             }
-            println!("{t}");
-            println!("{} series", series.len());
+            crate::outln!("{t}");
+            crate::outln!("{} series", series.len());
         }
         SeriesCmd::Remove {
             id,
@@ -132,17 +132,17 @@ pub async fn run(cmd: SeriesCmd, clients: &Clients, json: bool) -> Result<()> {
                 .ok_or_else(|| CliarrError::Other(format!("no series with id {id} in the library")))?;
             let extra = if delete_files { " and delete its files" } else { "" };
             if !confirm(&format!("Remove \"{}\"{extra}?", series.title))? {
-                println!("aborted");
+                crate::outln!("aborted");
                 return Ok(());
             }
             sonarr.delete_series(id, delete_files, exclude).await?;
-            println!("✓ Removed: {}", series.title);
+            crate::outln!("✓ Removed: {}", series.title);
         }
         SeriesCmd::SearchMissing => {
             sonarr
                 .command("MissingEpisodeSearch", serde_json::json!({}))
                 .await?;
-            println!("✓ Triggered search for all missing episodes");
+            crate::outln!("✓ Triggered search for all missing episodes");
         }
         SeriesCmd::Refresh { id } => {
             let extra = match id {
@@ -150,7 +150,7 @@ pub async fn run(cmd: SeriesCmd, clients: &Clients, json: bool) -> Result<()> {
                 None => serde_json::json!({}),
             };
             sonarr.command("RefreshSeries", extra).await?;
-            println!("✓ Triggered refresh");
+            crate::outln!("✓ Triggered refresh");
         }
     }
     Ok(())

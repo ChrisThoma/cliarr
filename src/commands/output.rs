@@ -23,8 +23,31 @@ pub fn right(s: impl ToString) -> Cell {
 pub fn print_json<T: Serialize>(value: &T) -> Result<()> {
     let out = serde_json::to_string_pretty(value)
         .map_err(|e| CliarrError::Other(format!("cannot serialize output: {e}")))?;
-    println!("{out}");
+    crate::outln!("{out}");
     Ok(())
+}
+
+/// Write one line to stdout. `println!` panics when the reader goes away
+/// (`cliarr movie list | head`); a broken pipe is normal termination for a
+/// piped CLI, so exit quietly instead.
+pub fn write_line(args: std::fmt::Arguments<'_>) {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    let res = out.write_fmt(args).and_then(|()| out.write_all(b"\n"));
+    if let Err(e) = res {
+        if e.kind() == std::io::ErrorKind::BrokenPipe {
+            std::process::exit(0);
+        }
+        eprintln!("error: cannot write to stdout: {e}");
+        std::process::exit(1);
+    }
+}
+
+/// Drop-in `println!` replacement for command output; see [`write_line`].
+#[macro_export]
+macro_rules! outln {
+    () => { $crate::commands::output::write_line(format_args!("")) };
+    ($($arg:tt)*) => { $crate::commands::output::write_line(format_args!($($arg)*)) };
 }
 
 pub fn fmt_bytes(bytes: f64) -> String {

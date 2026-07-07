@@ -12,7 +12,7 @@ pub async fn run(cmd: Option<NzbCmd>, clients: &Clients, json: bool) -> Result<(
                 return output::print_json(&groups);
             }
             if groups.is_empty() {
-                println!("no downloads queued");
+                crate::outln!("no downloads queued");
                 return Ok(());
             }
             let mut t = output::table(&["id", "name", "status", "progress", "size", "category"]);
@@ -26,26 +26,26 @@ pub async fn run(cmd: Option<NzbCmd>, clients: &Clients, json: bool) -> Result<(
                     comfy_table::Cell::new(&g.category),
                 ]);
             }
-            println!("{t}");
+            crate::outln!("{t}");
         }
         NzbCmd::Pause { ids } => {
             require_ids(&ids)?;
             nzbget.pause(&ids).await?;
-            println!("✓ Paused {} download(s)", ids.len());
+            crate::outln!("✓ Paused {} download(s)", ids.len());
         }
         NzbCmd::Resume { ids } => {
             require_ids(&ids)?;
             nzbget.resume(&ids).await?;
-            println!("✓ Resumed {} download(s)", ids.len());
+            crate::outln!("✓ Resumed {} download(s)", ids.len());
         }
         NzbCmd::Delete { ids } => {
             require_ids(&ids)?;
             if !confirm(&format!("Delete {} download(s) from the queue?", ids.len()))? {
-                println!("aborted");
+                crate::outln!("aborted");
                 return Ok(());
             }
             nzbget.delete(&ids).await?;
-            println!("✓ Deleted {} download(s)", ids.len());
+            crate::outln!("✓ Deleted {} download(s)", ids.len());
         }
     }
     Ok(())

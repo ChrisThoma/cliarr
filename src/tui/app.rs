@@ -131,6 +131,9 @@ pub struct DownloadsState {
     pub nzb: Loadable<Vec<NzbGroup>>,
     pub selected: usize,
     pub ticks_since_refresh: u8,
+    /// Bumped per refresh; queue responses carrying an older seq are stale
+    /// (the auto-refresh can overlap a slow in-flight request) and dropped.
+    pub seq: u64,
 }
 
 #[derive(Debug, Default)]
@@ -404,8 +407,7 @@ impl App {
                 if clients.nzbget.is_some() {
                     self.downloads.nzb = Loadable::Loading;
                 }
-                self.downloads.ticks_since_refresh = 0;
-                fetch::downloads(tx, clients);
+                self.start_downloads_fetch();
             }
             Tab::Missing => {
                 if clients.radarr.is_some() {
@@ -418,6 +420,14 @@ impl App {
             }
             Tab::Search => {}
         }
+    }
+
+    /// Every downloads fetch goes through here so it carries a fresh seq;
+    /// only the newest refresh's responses get applied.
+    fn start_downloads_fetch(&mut self) {
+        self.downloads.ticks_since_refresh = 0;
+        self.downloads.seq += 1;
+        fetch::downloads(self.tx.clone(), self.clients.clone(), self.downloads.seq);
     }
 
     // ---- event handling ----------------------------------------------------
@@ -449,9 +459,8 @@ impl App {
         if self.tab == Tab::Downloads && self.modal.is_none() {
             self.downloads.ticks_since_refresh += 1;
             if self.downloads.ticks_since_refresh >= DOWNLOADS_REFRESH_TICKS {
-                self.downloads.ticks_since_refresh = 0;
                 // Silent refresh: keep old data on screen, no Loading flicker.
-                fetch::downloads(self.tx.clone(), self.clients.clone());
+                self.start_downloads_fetch();
             }
         }
     }
@@ -495,28 +504,37 @@ impl App {
                     }
                 }
             }
-            // The downloads list silently refreshes every 5s; re-anchor the
-            // selection by row identity so a keypress racing the refresh
-            // can't pause/delete a row that shifted into the old position.
-            DataMsg::RadarrQueue(r) => {
-                let prev = self.selected_download_key();
-                self.downloads.radarr_queue.set(r);
-                self.restore_download_selection(prev);
+            // The downloads list silently refreshes every 5s; drop responses
+            // from an older refresh (stale seq), and re-anchor the selection
+            // by row identity so a keypress racing the refresh can't
+            // pause/delete a row that shifted into the old position.
+            DataMsg::RadarrQueue { seq, result } => {
+                if seq == self.downloads.seq {
+                    let prev = self.selected_download_key();
+                    self.downloads.radarr_queue.set(result);
+                    self.restore_download_selection(prev);
+                }
             }
-            DataMsg::SonarrQueue(r) => {
-                let prev = self.selected_download_key();
-                self.downloads.sonarr_queue.set(r);
-                self.restore_download_selection(prev);
+            DataMsg::SonarrQueue { seq, result } => {
+                if seq == self.downloads.seq {
+                    let prev = self.selected_download_key();
+                    self.downloads.sonarr_queue.set(result);
+                    self.restore_download_selection(prev);
+                }
             }
-            DataMsg::Torrents(r) => {
-                let prev = self.selected_download_key();
-                self.downloads.torrents.set(r);
-                self.restore_download_selection(prev);
+            DataMsg::Torrents { seq, result } => {
+                if seq == self.downloads.seq {
+                    let prev = self.selected_download_key();
+                    self.downloads.torrents.set(result);
+                    self.restore_download_selection(prev);
+                }
             }
-            DataMsg::NzbGroups(r) => {
-                let prev = self.selected_download_key();
-                self.downloads.nzb.set(r);
-                self.restore_download_selection(prev);
+            DataMsg::NzbGroups { seq, result } => {
+                if seq == self.downloads.seq {
+                    let prev = self.selected_download_key();
+                    self.downloads.nzb.set(result);
+                    self.restore_download_selection(prev);
+                }
             }
             DataMsg::Calendar(r) => self.calendar.entries.set(r),
             DataMsg::RadarrMissing(r) => self.missing.radarr.set(r),
@@ -538,9 +556,7 @@ impl App {
     /// while the action was in flight, and its data must not go stale).
     fn after_action_refresh(&mut self, origin: Tab) {
         match origin {
-            Tab::Downloads => {
-                fetch::downloads(self.tx.clone(), self.clients.clone());
-            }
+            Tab::Downloads => self.start_downloads_fetch(),
             // Adds from Search change the library just like edits/deletes
             // from Library do.
             Tab::Library | Tab::Search => {

@@ -115,29 +115,35 @@ pub fn add_options(tx: UnboundedSender<Event>, clients: Arc<Clients>, for_movies
     });
 }
 
-pub fn downloads(tx: UnboundedSender<Event>, clients: Arc<Clients>) {
+/// `seq` identifies the refresh generation; the handler drops responses from
+/// an older refresh so a slow request can't overwrite newer queue state.
+pub fn downloads(tx: UnboundedSender<Event>, clients: Arc<Clients>, seq: u64) {
     if let Some(radarr) = clients.radarr.clone() {
         let tx = tx.clone();
         tokio::spawn(async move {
-            send(&tx, DataMsg::RadarrQueue(radarr.queue().await.map_err(err_str)));
+            let result = radarr.queue().await.map_err(err_str);
+            send(&tx, DataMsg::RadarrQueue { seq, result });
         });
     }
     if let Some(sonarr) = clients.sonarr.clone() {
         let tx = tx.clone();
         tokio::spawn(async move {
-            send(&tx, DataMsg::SonarrQueue(sonarr.queue().await.map_err(err_str)));
+            let result = sonarr.queue().await.map_err(err_str);
+            send(&tx, DataMsg::SonarrQueue { seq, result });
         });
     }
     if let Some(qbit) = clients.qbit.clone() {
         let tx = tx.clone();
         tokio::spawn(async move {
-            send(&tx, DataMsg::Torrents(qbit.torrents(None).await.map_err(err_str)));
+            let result = qbit.torrents(None).await.map_err(err_str);
+            send(&tx, DataMsg::Torrents { seq, result });
         });
     }
     if let Some(nzbget) = clients.nzbget.clone() {
         let tx = tx.clone();
         tokio::spawn(async move {
-            send(&tx, DataMsg::NzbGroups(nzbget.listgroups().await.map_err(err_str)));
+            let result = nzbget.listgroups().await.map_err(err_str);
+            send(&tx, DataMsg::NzbGroups { seq, result });
         });
     }
 }

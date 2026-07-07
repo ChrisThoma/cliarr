@@ -63,7 +63,7 @@ pub async fn run(service: ArrService, clients: &Clients, json: bool) -> Result<(
         return output::print_json(&entries);
     }
     if entries.is_empty() {
-        println!("nothing missing 🎉");
+        crate::outln!("nothing missing 🎉");
         return Ok(());
     }
     let mut t = output::table(&["service", "id", "title", "detail"]);
@@ -75,8 +75,8 @@ pub async fn run(service: ArrService, clients: &Clients, json: bool) -> Result<(
             comfy_table::Cell::new(&e.detail),
         ]);
     }
-    println!("{t}");
-    println!("{}", totals.join(", "));
-    println!("hint: `cliarr movie search-missing` / `cliarr series search-missing` to trigger searches");
+    crate::outln!("{t}");
+    crate::outln!("{}", totals.join(", "));
+    crate::outln!("hint: `cliarr movie search-missing` / `cliarr series search-missing` to trigger searches");
     Ok(())
 }

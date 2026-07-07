@@ -17,6 +17,19 @@ use crate::tui::event::Event;
 use crate::tui::posters::PosterManager;
 
 pub async fn run(config: Config, initial_query: Option<String>) -> Result<()> {
+    // Bail before raw mode / the input reader: crossterm's EventStream
+    // panics without a tty, and a TUI drawn into a pipe is garbage anyway.
+    {
+        use std::io::IsTerminal;
+        if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+            return Err(CliarrError::Other(
+                "the interactive TUI needs a terminal; for scripted output use a subcommand \
+                 like `cliarr movie list` (see `cliarr --help`)"
+                    .into(),
+            ));
+        }
+    }
+
     let clients = Arc::new(Clients::from_config(&config));
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
 
@@ -62,7 +75,8 @@ pub async fn run(config: Config, initial_query: Option<String>) -> Result<()> {
         }
     });
 
-    let mut terminal = ratatui::init();
+    let mut terminal = ratatui::try_init()
+        .map_err(|e| CliarrError::Other(format!("cannot initialize the terminal: {e}")))?;
     let mut app = App::new(clients, tx, posters);
     app.load_tab();
     if let Some(query) = initial_query {

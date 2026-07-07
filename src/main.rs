@@ -1,5 +1,3 @@
-use clap::Parser;
-
 use cliarr::api::Clients;
 use cliarr::cli::{Cli, Commands};
 use cliarr::commands;
@@ -9,7 +7,7 @@ use cliarr::tui;
 
 #[tokio::main]
 async fn main() {
-    let cli = Cli::parse();
+    let cli = Cli::parse_args();
     if let Err(e) = run(cli).await {
         eprintln!("error: {e}");
         std::process::exit(e.exit_code());

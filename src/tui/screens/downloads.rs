@@ -182,10 +182,12 @@ impl App {
     fn downloads_delete(&mut self) {
         let Some(row) = self.selected_row() else { return };
         let modal = match row {
+            // remove-from-client defaults on, matching the Radarr/Sonarr web
+            // UI; leaving the download in the client usually just re-imports.
             DownloadRow::Arr { service, id, title, .. } => Modal::Confirm {
                 msg: format!("Remove \"{title}\" from the {} queue?", service.label().to_lowercase()),
-                toggle_label: None,
-                toggle: false,
+                toggle_label: Some("also remove from download client"),
+                toggle: true,
                 action: ConfirmAction::RemoveQueueItem {
                     radarr: service == Service::Radarr,
                     id,
@@ -215,8 +217,8 @@ impl App {
         };
         self.modal = Some(Modal::Confirm {
             msg: format!("Blocklist \"{title}\" and remove it from the queue?"),
-            toggle_label: None,
-            toggle: false,
+            toggle_label: Some("also remove from download client"),
+            toggle: true,
             action: ConfirmAction::RemoveQueueItem {
                 radarr: service == Service::Radarr,
                 id,
@@ -332,15 +334,25 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::api::models::arr::QueueItem;
     use crate::api::Clients;
-    use crate::config::{Config, PosterProtocol};
+    use crate::config::{ApiKeyService, Config, PosterProtocol};
+    use crate::tui::event::{DataMsg, Event};
     use crate::tui::posters::PosterManager;
 
     fn app() -> App {
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        app_with_config(&Config::default()).0
+    }
+
+    fn app_with_config(config: &Config) -> (App, tokio::sync::mpsc::UnboundedReceiver<Event>) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let posters =
             PosterManager::detect(PosterProtocol::Off, tx.clone(), crate::api::http::build_client());
-        App::new(Arc::new(Clients::from_config(&Config::default())), tx, posters)
+        (App::new(Arc::new(Clients::from_config(config)), tx, posters), rx)
+    }
+
+    fn queue_item(id: i64, title: &str) -> QueueItem {
+        serde_json::from_value(serde_json::json!({ "id": id, "title": title })).unwrap()
     }
 
     fn render_downloads(app: &mut App) -> String {
@@ -381,5 +393,89 @@ mod tests {
 
         let out = render_downloads(&mut app);
         assert!(out.contains("no active downloads"), "genuinely empty stays friendly: {out}");
+    }
+
+    #[test]
+    fn stale_downloads_refresh_is_dropped() {
+        let mut app = app();
+        // Two overlapping refreshes: seq 2 is current, seq 1's slow response
+        // arrives after seq 2's and must not overwrite it.
+        app.downloads.seq = 2;
+        app.handle(Event::Data(DataMsg::RadarrQueue {
+            seq: 2,
+            result: Ok(vec![queue_item(1, "new")]),
+        }));
+        app.handle(Event::Data(DataMsg::RadarrQueue {
+            seq: 1,
+            result: Ok(vec![queue_item(9, "old")]),
+        }));
+
+        let rows = app.download_rows();
+        assert_eq!(rows.len(), 1, "stale refresh must not replace current data");
+        match &rows[0] {
+            DownloadRow::Arr { id, title, .. } => {
+                assert_eq!((*id, title.as_str()), (1, "new"));
+            }
+            _ => panic!("expected the arr queue row"),
+        }
+    }
+
+    /// Drive the confirm modal end-to-end against a mock Radarr and assert
+    /// the exact query the destructive action sends.
+    async fn remove_queue_item_via_modal(toggle_off_client_removal: bool) {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let expect_remove = (!toggle_off_client_removal).to_string();
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/api/v3/queue/42"))
+            .and(query_param("blocklist", "false"))
+            .and(query_param("removeFromClient", expect_remove.as_str()))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = Config {
+            radarr: Some(ApiKeyService { url: server.uri(), api_key: "k".into() }),
+            ..Config::default()
+        };
+        let (mut app, mut rx) = app_with_config(&config);
+        app.downloads.radarr_queue = Loadable::Ready(vec![queue_item(42, "stuck download")]);
+
+        app.downloads_key(KeyEvent::from(KeyCode::Char('d')));
+        assert!(
+            matches!(app.modal, Some(Modal::Confirm { toggle: true, toggle_label: Some(_), .. })),
+            "removal confirm must expose the remove-from-client toggle, default on"
+        );
+        if toggle_off_client_removal {
+            app.handle_modal_key(KeyEvent::from(KeyCode::Char('f')));
+        }
+        app.handle_modal_key(KeyEvent::from(KeyCode::Enter));
+
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if let Event::Data(DataMsg::ActionDone { result, .. }) =
+                    rx.recv().await.expect("event channel stays open")
+                {
+                    break result;
+                }
+            }
+        })
+        .await
+        .expect("queue removal must complete");
+        result.expect("queue delete must succeed");
+        // MockServer verifies the expected request (incl. query) on drop.
+    }
+
+    #[tokio::test]
+    async fn queue_removal_defaults_to_removing_from_download_client() {
+        remove_queue_item_via_modal(false).await;
+    }
+
+    #[tokio::test]
+    async fn queue_removal_toggle_keeps_download_in_client() {
+        remove_queue_item_via_modal(true).await;
     }
 }

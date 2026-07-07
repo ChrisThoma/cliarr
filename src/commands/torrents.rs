@@ -12,7 +12,7 @@ pub async fn run(cmd: Option<TorrentsCmd>, clients: &Clients, json: bool) -> Res
                 return output::print_json(&torrents);
             }
             if torrents.is_empty() {
-                println!("no torrents");
+                crate::outln!("no torrents");
                 return Ok(());
             }
             let mut t = output::table(&["hash", "name", "state", "progress", "size", "speed", "eta"]);
@@ -27,27 +27,27 @@ pub async fn run(cmd: Option<TorrentsCmd>, clients: &Clients, json: bool) -> Res
                     output::right(output::fmt_eta_secs(tor.eta)),
                 ]);
             }
-            println!("{t}");
+            crate::outln!("{t}");
         }
         TorrentsCmd::Pause { hashes } => {
             let hashes = expand_hashes(qbit, &hashes).await?;
             qbit.pause(&hashes).await?;
-            println!("✓ Paused {} torrent(s)", hashes.len());
+            crate::outln!("✓ Paused {} torrent(s)", hashes.len());
         }
         TorrentsCmd::Resume { hashes } => {
             let hashes = expand_hashes(qbit, &hashes).await?;
             qbit.resume(&hashes).await?;
-            println!("✓ Resumed {} torrent(s)", hashes.len());
+            crate::outln!("✓ Resumed {} torrent(s)", hashes.len());
         }
         TorrentsCmd::Delete { hashes, delete_files } => {
             let hashes = expand_hashes(qbit, &hashes).await?;
             let extra = if delete_files { " and its data" } else { "" };
             if !confirm(&format!("Delete {} torrent(s){extra}?", hashes.len()))? {
-                println!("aborted");
+                crate::outln!("aborted");
                 return Ok(());
             }
             qbit.delete(&hashes, delete_files).await?;
-            println!("✓ Deleted {} torrent(s)", hashes.len());
+            crate::outln!("✓ Deleted {} torrent(s)", hashes.len());
         }
     }
     Ok(())

@@ -20,7 +20,7 @@ fn show(config_path: Option<&Path>, json: bool) -> Result<()> {
         return output::print_json(&config);
     }
     let path = Config::path(config_path)?;
-    println!("# {}", path.display());
+    crate::outln!("# {}", path.display());
     print!(
         "{}",
         toml::to_string_pretty(&config).unwrap_or_else(|e| format!("<serialize error: {e}>"))
@@ -30,7 +30,7 @@ fn show(config_path: Option<&Path>, json: bool) -> Result<()> {
 
 async fn init(config_path: Option<&Path>) -> Result<()> {
     let mut config = Config::load_or_default(config_path)?;
-    println!("cliarr setup: press Enter to skip a service or keep the current value.\n");
+    crate::outln!("cliarr setup: press Enter to skip a service or keep the current value.\n");
 
     if ask_service("Radarr")? {
         let current = config.radarr.take();
@@ -60,8 +60,8 @@ async fn init(config_path: Option<&Path>) -> Result<()> {
     }
 
     let path = config.save(config_path)?;
-    println!("\nSaved {}", path.display());
-    println!("Testing connectivity…\n");
+    crate::outln!("\nSaved {}", path.display());
+    crate::outln!("Testing connectivity…\n");
     test_config(&config, false).await
 }
 
@@ -231,7 +231,7 @@ async fn test_config(config: &Config, json: bool) -> Result<()> {
             any_fail = true;
             "✗"
         };
-        println!("{mark} {:<12} {}", r.service, r.detail);
+        crate::outln!("{mark} {:<12} {}", r.service, r.detail);
     }
     if any_fail {
         return Err(crate::error::CliarrError::Other(

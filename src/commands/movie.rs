@@ -12,7 +12,7 @@ pub async fn run(cmd: MovieCmd, clients: &Clients, json: bool) -> Result<()> {
                 return output::print_json(&results);
             }
             if results.is_empty() {
-                println!("no results for \"{query}\"");
+                crate::outln!("no results for \"{query}\"");
                 return Ok(());
             }
             let mut t = output::table(&["title", "year", "tmdb", "status", "in library"]);
@@ -25,7 +25,7 @@ pub async fn run(cmd: MovieCmd, clients: &Clients, json: bool) -> Result<()> {
                     if m.id > 0 { "✓".into() } else { String::new() },
                 ]);
             }
-            println!("{t}");
+            crate::outln!("{t}");
         }
         MovieCmd::Add {
             tmdb_id,
@@ -57,7 +57,7 @@ pub async fn run(cmd: MovieCmd, clients: &Clients, json: bool) -> Result<()> {
             if json {
                 return output::print_json(&added);
             }
-            println!(
+            crate::outln!(
                 "✓ Added: {} ({}){}",
                 added.title,
                 added.year.map(|y| y.to_string()).unwrap_or_default(),
@@ -89,8 +89,8 @@ pub async fn run(cmd: MovieCmd, clients: &Clients, json: bool) -> Result<()> {
                     output::right(output::fmt_bytes(m.size_on_disk.unwrap_or(0) as f64)),
                 ]);
             }
-            println!("{t}");
-            println!("{} movies", movies.len());
+            crate::outln!("{t}");
+            crate::outln!("{} movies", movies.len());
         }
         MovieCmd::Remove {
             id,
@@ -104,17 +104,17 @@ pub async fn run(cmd: MovieCmd, clients: &Clients, json: bool) -> Result<()> {
                 .ok_or_else(|| CliarrError::Other(format!("no movie with id {id} in the library")))?;
             let extra = if delete_files { " and delete its files" } else { "" };
             if !confirm(&format!("Remove \"{}\"{extra}?", movie.title))? {
-                println!("aborted");
+                crate::outln!("aborted");
                 return Ok(());
             }
             radarr.delete_movie(id, delete_files, exclude).await?;
-            println!("✓ Removed: {}", movie.title);
+            crate::outln!("✓ Removed: {}", movie.title);
         }
         MovieCmd::SearchMissing => {
             radarr
                 .command("MissingMoviesSearch", serde_json::json!({}))
                 .await?;
-            println!("✓ Triggered search for all missing movies");
+            crate::outln!("✓ Triggered search for all missing movies");
         }
         MovieCmd::Refresh { id } => {
             let extra = match id {
@@ -122,7 +122,7 @@ pub async fn run(cmd: MovieCmd, clients: &Clients, json: bool) -> Result<()> {
                 None => serde_json::json!({}),
             };
             radarr.command("RefreshMovie", extra).await?;
-            println!("✓ Triggered refresh");
+            crate::outln!("✓ Triggered refresh");
         }
     }
     Ok(())

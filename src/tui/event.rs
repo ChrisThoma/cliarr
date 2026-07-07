@@ -44,10 +44,13 @@ pub enum DataMsg {
         result: Result<(Vec<QualityProfile>, Vec<RootFolder>), String>,
     },
 
-    RadarrQueue(Result<Vec<QueueItem>, String>),
-    SonarrQueue(Result<Vec<QueueItem>, String>),
-    Torrents(Result<Vec<Torrent>, String>),
-    NzbGroups(Result<Vec<NzbGroup>, String>),
+    /// `seq` echoes DownloadsState::seq at request time; the Downloads tab
+    /// silently refreshes every 5s while requests may run for 15s, so an
+    /// older slow response must not overwrite a newer refresh's data.
+    RadarrQueue { seq: u64, result: Result<Vec<QueueItem>, String> },
+    SonarrQueue { seq: u64, result: Result<Vec<QueueItem>, String> },
+    Torrents { seq: u64, result: Result<Vec<Torrent>, String> },
+    NzbGroups { seq: u64, result: Result<Vec<NzbGroup>, String> },
 
     Calendar(Result<Vec<CalendarEntry>, String>),
 

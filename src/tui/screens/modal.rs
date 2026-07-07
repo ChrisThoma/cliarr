@@ -95,12 +95,12 @@ impl App {
                 if radarr {
                     let Some(client) = self.clients.radarr.clone() else { return };
                     fetch::action(tx, origin, desc, async move {
-                        client.queue_delete(id, blocklist, true).await
+                        client.queue_delete(id, blocklist, toggle).await
                     });
                 } else {
                     let Some(client) = self.clients.sonarr.clone() else { return };
                     fetch::action(tx, origin, desc, async move {
-                        client.queue_delete(id, blocklist, true).await
+                        client.queue_delete(id, blocklist, toggle).await
                     });
                 }
             }

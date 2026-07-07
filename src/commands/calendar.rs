@@ -19,16 +19,16 @@ pub async fn run(days: i64, clients: &Clients, json: bool) -> Result<()> {
         return output::print_json(&entries);
     }
     if entries.is_empty() {
-        println!("nothing upcoming in the next {days} days");
+        crate::outln!("nothing upcoming in the next {days} days");
         return Ok(());
     }
     let mut current_date = String::new();
     for e in &entries {
         if e.date != current_date {
             current_date = e.date.clone();
-            println!("\n{current_date}");
+            crate::outln!("\n{current_date}");
         }
-        println!("  [{}] {} {}", e.service, e.title, e.detail);
+        crate::outln!("  [{}] {} {}", e.service, e.title, e.detail);
     }
     Ok(())
 }

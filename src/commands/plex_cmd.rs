@@ -18,19 +18,19 @@ pub async fn run(cmd: PlexCmd, clients: &Clients, json_out: bool) -> Result<()> 
                     "sessions": sessions.sessions,
                 }));
             }
-            println!(
+            crate::outln!(
                 "{} — Plex {}",
                 identity.friendly_name.as_deref().unwrap_or("Plex server"),
                 identity.version
             );
-            println!("\nLibraries:");
+            crate::outln!("\nLibraries:");
             for s in &sections.directories {
-                println!("  {} ({})", s.title, s.kind);
+                crate::outln!("  {} ({})", s.title, s.kind);
             }
             if sessions.sessions.is_empty() {
-                println!("\nNothing playing");
+                crate::outln!("\nNothing playing");
             } else {
-                println!("\nNow playing:");
+                crate::outln!("\nNow playing:");
                 for s in &sessions.sessions {
                     let user = s
                         .user
@@ -46,7 +46,7 @@ pub async fn run(cmd: PlexCmd, clients: &Clients, json_out: bool) -> Result<()> 
                         (Some(o), Some(d)) if d > 0 => format!(" [{:.0}%]", o as f64 / d as f64 * 100.0),
                         _ => String::new(),
                     };
-                    println!("  {} — {user} on {player}{progress}", s.display_title());
+                    crate::outln!("  {} — {user} on {player}{progress}", s.display_title());
                 }
             }
         }

@@ -30,7 +30,7 @@ pub async fn run(cmd: Option<QueueCmd>, service: ArrService, clients: &Clients, 
                     clients.sonarr()?.queue_delete(id, blocklist, remove_from_client).await?
                 }
             }
-            println!(
+            crate::outln!(
                 "✓ Removed queue item {id}{}",
                 if blocklist { " (blocklisted)" } else { "" }
             );
@@ -65,7 +65,7 @@ async fn list(service: ArrService, clients: &Clients, json: bool) -> Result<()> 
         return output::print_json(&items);
     }
     if items.is_empty() {
-        println!("queue is empty");
+        crate::outln!("queue is empty");
         return Ok(());
     }
     let mut t = output::table(&["id", "service", "title", "status", "progress", "time left"]);
@@ -83,6 +83,6 @@ async fn list(service: ArrService, clients: &Clients, json: bool) -> Result<()> 
             comfy_table::Cell::new(item.timeleft.clone().unwrap_or_default()),
         ]);
     }
-    println!("{t}");
+    crate::outln!("{t}");
     Ok(())
 }

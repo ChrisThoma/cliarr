@@ -1,5 +1,7 @@
+use std::ffi::OsString;
 use std::path::PathBuf;
 
+use clap::error::ErrorKind;
 use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
@@ -8,11 +10,13 @@ use clap::{Parser, Subcommand, ValueEnum};
     version,
     about = "Manage your home media stack from the terminal",
     long_about = "Manage your home media stack from the terminal.\n\nRun without a subcommand to launch the interactive TUI.\nAny bare words launch the TUI already searching: `cliarr dune part two`.",
-    args_conflicts_with_subcommands = true
+    override_usage = "cliarr [OPTIONS] [QUERY]...\n       cliarr [OPTIONS] <COMMAND>"
 )]
 pub struct Cli {
-    /// Search query; launches the TUI with this search already running
-    #[arg(value_name = "QUERY", trailing_var_arg = true)]
+    /// Search query; launches the TUI with this search already running.
+    /// Filled by the query fallback parse, never by this parser (a positional
+    /// here would swallow `movie list` after a global flag like `--json`).
+    #[arg(skip)]
     pub query: Vec<String>,
 
     /// Output JSON instead of tables
@@ -25,6 +29,45 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Option<Commands>,
+}
+
+/// Fallback parser for the search-first form: everything after the flags is
+/// the query, verbatim.
+#[derive(Debug, Parser)]
+#[command(name = "cliarr", version)]
+struct QueryCli {
+    #[arg(value_name = "QUERY", trailing_var_arg = true)]
+    query: Vec<String>,
+
+    #[arg(long)]
+    json: bool,
+
+    #[arg(long, value_name = "PATH")]
+    config: Option<PathBuf>,
+}
+
+impl Cli {
+    /// Parse in two stages: subcommands win, and only an unknown first word
+    /// (`cliarr dune part two`) falls back to being a TUI search query. This
+    /// keeps global flags working in both positions (`cliarr --json movie
+    /// list` and `cliarr movie list --json`).
+    pub fn parse_args() -> Self {
+        Self::try_parse_args(std::env::args_os()).unwrap_or_else(|e| e.exit())
+    }
+
+    pub fn try_parse_args(
+        args: impl IntoIterator<Item = impl Into<OsString>>,
+    ) -> Result<Self, clap::Error> {
+        let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
+        match Self::try_parse_from(&args) {
+            Ok(cli) => Ok(cli),
+            Err(e) if e.kind() == ErrorKind::InvalidSubcommand => {
+                let q = QueryCli::try_parse_from(&args)?;
+                Ok(Cli { query: q.query, json: q.json, config: q.config, command: None })
+            }
+            Err(e) => Err(e),
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -247,4 +290,72 @@ pub enum LibraryFilter {
     Missing,
     Monitored,
     Unmonitored,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Cli {
+        Cli::try_parse_args(args.iter().copied())
+            .unwrap_or_else(|e| panic!("{args:?} must parse: {e}"))
+    }
+
+    #[test]
+    fn clap_debug_assert() {
+        use clap::CommandFactory;
+        Cli::command().debug_assert();
+        QueryCli::command().debug_assert();
+    }
+
+    #[test]
+    fn global_flags_work_before_and_after_subcommands() {
+        for args in [
+            &["cliarr", "--json", "movie", "list"],
+            &["cliarr", "movie", "list", "--json"],
+        ] {
+            let cli = parse(args);
+            assert!(cli.json, "{args:?} must set --json");
+            assert!(cli.query.is_empty(), "{args:?} must not become a query");
+            assert!(
+                matches!(cli.command, Some(Commands::Movie { cmd: MovieCmd::List { .. } })),
+                "{args:?} must parse as `movie list`, got {:?}",
+                cli.command
+            );
+        }
+    }
+
+    #[test]
+    fn global_config_flag_before_subcommand() {
+        let cli = parse(&["cliarr", "--config", "/tmp/c.toml", "queue"]);
+        assert_eq!(cli.config.as_deref(), Some(std::path::Path::new("/tmp/c.toml")));
+        assert!(matches!(cli.command, Some(Commands::Queue { .. })));
+    }
+
+    #[test]
+    fn bare_words_become_a_search_query() {
+        let cli = parse(&["cliarr", "dune", "part", "two"]);
+        assert!(cli.command.is_none());
+        assert_eq!(cli.query, ["dune", "part", "two"]);
+    }
+
+    #[test]
+    fn flags_still_parse_ahead_of_a_query() {
+        let cli = parse(&["cliarr", "--json", "dune"]);
+        assert!(cli.json);
+        assert!(cli.command.is_none());
+        assert_eq!(cli.query, ["dune"]);
+    }
+
+    #[test]
+    fn no_args_launches_plain_tui() {
+        let cli = parse(&["cliarr"]);
+        assert!(cli.command.is_none());
+        assert!(cli.query.is_empty());
+    }
+
+    #[test]
+    fn unknown_flags_are_still_errors_not_queries() {
+        assert!(Cli::try_parse_args(["cliarr", "--nope"]).is_err());
+    }
 }
