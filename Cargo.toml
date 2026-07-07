@@ -6,7 +6,10 @@ rust-version = "1.88"
 description = "A fast CLI/TUI for your home media stack"
 license = "MIT"
 repository = "https://github.com/ChrisThoma/cliarr"
+homepage = "https://individuation.dev/projects/cliarr/"
 readme = "README.md"
+keywords = ["radarr", "sonarr", "plex", "tui", "self-hosted"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }

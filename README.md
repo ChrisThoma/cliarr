@@ -13,6 +13,16 @@
 
 A fast terminal client for your home media stack: **Radarr**, **Sonarr**, **Plex**, **qBittorrent** and **NZBGet**, all over their LAN HTTP APIs. No SSH into the NAS required.
 
+![cliarr demo: live search, dashboard, library and calendar](assets/demo.gif)
+
+*(The GIF shows the unicode poster fallback — in kitty, iTerm2 or a sixel terminal, posters render as crisp images.)*
+
+If you run the arr stack on a NAS and live in a terminal, this is for you. One binary, one `config.toml`, try it in a minute:
+
+```sh
+cargo install cliarr && cliarr config init
+```
+
 It's two tools in one binary:
 
 - **Scriptable subcommands:** `cliarr movie add`, `cliarr queue`, `cliarr torrents pause ...` with `--json` output for piping.
@@ -21,7 +31,7 @@ It's two tools in one binary:
 ## Setup
 
 ```sh
-cargo install --git https://github.com/ChrisThoma/cliarr
+cargo install cliarr
 cliarr config init       # interactive wizard, tests each connection
 cliarr config test       # re-check connectivity any time
 ```
