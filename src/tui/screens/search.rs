@@ -6,7 +6,7 @@ use ratatui::Frame;
 
 use crate::api::models::radarr::Movie;
 use crate::api::models::sonarr::Series;
-use crate::tui::app::{AddField, AddModal, App, Modal, move_selection};
+use crate::tui::app::{AddField, AddModal, AddTarget, App, Modal, move_selection};
 use crate::tui::event::Loadable;
 use crate::tui::{fetch, theme};
 
@@ -195,29 +195,18 @@ impl App {
     }
 
     fn open_add_modal(&mut self) {
-        enum Picked {
-            Movie(Movie),
-            Series(Series),
-        }
-        let picked = {
+        let target = {
             let hits = self.search_hits();
             match hits.get(self.search.selected) {
-                Some(SearchHit::Movie(m)) => Picked::Movie((*m).clone()),
-                Some(SearchHit::Series(s)) => Picked::Series((*s).clone()),
+                Some(SearchHit::Movie(m)) => AddTarget::Movie((*m).clone()),
+                Some(SearchHit::Series(s)) => AddTarget::Series((*s).clone()),
                 None => return,
             }
         };
-        let (movie, series, for_movies, title, in_library) = match picked {
-            Picked::Movie(m) => {
-                let dup = m.id > 0;
-                let t = m.title.clone();
-                (Some(m), None, true, t, dup)
-            }
-            Picked::Series(s) => {
-                let dup = s.id > 0;
-                let t = s.title.clone();
-                (None, Some(s), false, t, dup)
-            }
+        // A nonzero id means the lookup hit is already in the library.
+        let (for_movies, title, in_library) = match &target {
+            AddTarget::Movie(m) => (true, m.title.clone(), m.id > 0),
+            AddTarget::Series(s) => (false, s.title.clone(), s.id > 0),
         };
         if in_library {
             self.toast_err(format!("\"{title}\" is already in the library"));
@@ -225,8 +214,7 @@ impl App {
         }
         fetch::add_options(self.tx.clone(), self.clients.clone(), for_movies);
         self.modal = Some(Modal::Add(AddModal {
-            movie,
-            series,
+            target,
             options: Loadable::Loading,
             profile_idx: 0,
             root_idx: 0,

@@ -1,10 +1,13 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::Color;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::api::http::join_url;
+use crate::api::models::radarr::Movie;
+use crate::api::models::sonarr::Series;
 use crate::commands::output::fmt_bytes;
 use crate::tui::app::{App, ConfirmAction, EditField, EditModal, MediaKind, Modal, move_selection};
 use crate::tui::event::Loadable;
@@ -62,43 +65,29 @@ impl App {
     }
 
     pub(crate) fn filtered_movie_indices(&self) -> Vec<usize> {
-        let filter = self.library.filter.to_lowercase();
-        self.movies
-            .ready()
-            .map(|movies| {
-                let mut idx: Vec<usize> = (0..movies.len())
-                    .filter(|&i| filter.is_empty() || movies[i].title.to_lowercase().contains(&filter))
-                    .collect();
-                idx.sort_by(|&a, &b| movies[a].title.to_lowercase().cmp(&movies[b].title.to_lowercase()));
-                idx
-            })
-            .unwrap_or_default()
+        filtered_indices(&self.movies, &self.library.filter, |m| m.title.as_str())
     }
 
     pub(crate) fn filtered_series_indices(&self) -> Vec<usize> {
-        let filter = self.library.filter.to_lowercase();
-        self.series
-            .ready()
-            .map(|series| {
-                let mut idx: Vec<usize> = (0..series.len())
-                    .filter(|&i| filter.is_empty() || series[i].title.to_lowercase().contains(&filter))
-                    .collect();
-                idx.sort_by(|&a, &b| series[a].title.to_lowercase().cmp(&series[b].title.to_lowercase()));
-                idx
-            })
-            .unwrap_or_default()
+        filtered_indices(&self.series, &self.library.filter, |s| s.title.as_str())
+    }
+
+    /// The movie under the library cursor (filter + sort applied), if any.
+    fn selected_movie(&self) -> Option<&Movie> {
+        let i = *self.filtered_movie_indices().get(self.library.selected)?;
+        self.movies.ready()?.get(i)
+    }
+
+    /// The series under the library cursor (filter + sort applied), if any.
+    fn selected_series(&self) -> Option<&Series> {
+        let i = *self.filtered_series_indices().get(self.library.selected)?;
+        self.series.ready()?.get(i)
     }
 
     fn library_search_release(&mut self) {
         match self.library.kind {
             MediaKind::Movies => {
-                let indices = self.filtered_movie_indices();
-                let Some(m) = indices
-                    .get(self.library.selected)
-                    .and_then(|&i| self.movies.ready().and_then(|v| v.get(i)))
-                else {
-                    return;
-                };
+                let Some(m) = self.selected_movie() else { return };
                 let (id, title) = (m.id, m.title.clone());
                 let Some(radarr) = self.clients.radarr.clone() else { return };
                 fetch::action(self.tx.clone(), self.tab, format!("searching for {title}"), async move {
@@ -106,13 +95,7 @@ impl App {
                 });
             }
             MediaKind::Series => {
-                let indices = self.filtered_series_indices();
-                let Some(s) = indices
-                    .get(self.library.selected)
-                    .and_then(|&i| self.series.ready().and_then(|v| v.get(i)))
-                else {
-                    return;
-                };
+                let Some(s) = self.selected_series() else { return };
                 let (id, title) = (s.id, s.title.clone());
                 let Some(sonarr) = self.clients.sonarr.clone() else { return };
                 fetch::action(self.tx.clone(), self.tab, format!("searching for {title}"), async move {
@@ -127,23 +110,11 @@ impl App {
     fn library_edit(&mut self) {
         let (id, is_movie, title, current_profile_id, monitored) = match self.library.kind {
             MediaKind::Movies => {
-                let indices = self.filtered_movie_indices();
-                let Some(m) = indices
-                    .get(self.library.selected)
-                    .and_then(|&i| self.movies.ready().and_then(|v| v.get(i)))
-                else {
-                    return;
-                };
+                let Some(m) = self.selected_movie() else { return };
                 (m.id, true, m.title.clone(), m.quality_profile_id, m.monitored.unwrap_or(false))
             }
             MediaKind::Series => {
-                let indices = self.filtered_series_indices();
-                let Some(s) = indices
-                    .get(self.library.selected)
-                    .and_then(|&i| self.series.ready().and_then(|v| v.get(i)))
-                else {
-                    return;
-                };
+                let Some(s) = self.selected_series() else { return };
                 (s.id, false, s.title.clone(), s.quality_profile_id, s.monitored.unwrap_or(false))
             }
         };
@@ -163,26 +134,14 @@ impl App {
     fn library_delete(&mut self) {
         let (msg, action) = match self.library.kind {
             MediaKind::Movies => {
-                let indices = self.filtered_movie_indices();
-                let Some(m) = indices
-                    .get(self.library.selected)
-                    .and_then(|&i| self.movies.ready().and_then(|v| v.get(i)))
-                else {
-                    return;
-                };
+                let Some(m) = self.selected_movie() else { return };
                 (
                     format!("Remove \"{}\" from Radarr?", m.title),
                     ConfirmAction::DeleteMovie { id: m.id, title: m.title.clone() },
                 )
             }
             MediaKind::Series => {
-                let indices = self.filtered_series_indices();
-                let Some(s) = indices
-                    .get(self.library.selected)
-                    .and_then(|&i| self.series.ready().and_then(|v| v.get(i)))
-                else {
-                    return;
-                };
+                let Some(s) = self.selected_series() else { return };
                 (
                     format!("Remove \"{}\" from Sonarr?", s.title),
                     ConfirmAction::DeleteSeries { id: s.id, title: s.title.clone() },
@@ -232,123 +191,79 @@ impl App {
 
     fn draw_movie_list(&mut self, f: &mut Frame, area: Rect) {
         let indices = self.filtered_movie_indices();
-        let title = format!("Movies ({})", indices.len());
-        let block = theme::panel(&title, theme::RADARR, true);
-        let inner = block.inner(area);
-        f.render_widget(block, area);
-
-        match &self.movies {
-            Loadable::Ready(movies) => {
-                let items: Vec<ListItem> = indices
-                    .iter()
-                    .map(|&i| {
-                        let m = &movies[i];
-                        let status = if m.has_file.unwrap_or(false) {
-                            Span::styled("● ", theme::accent_bold(theme::SUCCESS))
-                        } else if m.monitored.unwrap_or(false) {
-                            Span::styled("◌ ", theme::accent_bold(theme::WARN))
-                        } else {
-                            Span::styled("· ", theme::dim())
-                        };
-                        ListItem::new(Line::from(vec![
-                            status,
-                            Span::raw(m.title.clone()),
-                            Span::styled(
-                                format!("  {}", m.year.map(|y| y.to_string()).unwrap_or_default()),
-                                theme::dim(),
-                            ),
-                        ]))
-                    })
-                    .collect();
-                let list = List::new(items)
-                    .highlight_style(theme::selected_row())
-                    .highlight_symbol(theme::SELECT_MARKER);
-                let mut state = ListState::default().with_selected(Some(self.library.selected));
-                f.render_stateful_widget(list, inner, &mut state);
-            }
-            Loadable::Loading => {
-                f.render_widget(
-                    Paragraph::new(format!("{} loading…", self.spinner())).style(theme::dim()),
-                    inner,
-                );
-            }
-            Loadable::Failed(e) => {
-                f.render_widget(
-                    Paragraph::new(e.clone()).style(theme::accent_bold(theme::ERROR)).wrap(Wrap { trim: true }),
-                    inner,
-                );
-            }
-            Loadable::NotAsked => {
-                f.render_widget(Paragraph::new("radarr not configured").style(theme::dim()), inner);
-            }
-        }
+        draw_loadable_list(
+            f,
+            area,
+            &format!("Movies ({})", indices.len()),
+            theme::RADARR,
+            &self.movies,
+            &indices,
+            self.library.selected,
+            self.spinner(),
+            "radarr not configured",
+            |m| {
+                let status = if m.has_file.unwrap_or(false) {
+                    Span::styled("● ", theme::accent_bold(theme::SUCCESS))
+                } else if m.monitored.unwrap_or(false) {
+                    Span::styled("◌ ", theme::accent_bold(theme::WARN))
+                } else {
+                    Span::styled("· ", theme::dim())
+                };
+                ListItem::new(Line::from(vec![
+                    status,
+                    Span::raw(m.title.clone()),
+                    Span::styled(
+                        format!("  {}", m.year.map(|y| y.to_string()).unwrap_or_default()),
+                        theme::dim(),
+                    ),
+                ]))
+            },
+        );
     }
 
     fn draw_series_list(&mut self, f: &mut Frame, area: Rect) {
         let indices = self.filtered_series_indices();
-        let title = format!("Series ({})", indices.len());
-        let block = theme::panel(&title, theme::SONARR, true);
-        let inner = block.inner(area);
-        f.render_widget(block, area);
-
-        match &self.series {
-            Loadable::Ready(series) => {
-                let items: Vec<ListItem> = indices
-                    .iter()
-                    .map(|&i| {
-                        let s = &series[i];
-                        let pct = s
-                            .statistics
-                            .as_ref()
-                            .and_then(|st| st.percent_of_episodes)
-                            .unwrap_or(0.0);
-                        let status = if pct >= 100.0 {
-                            Span::styled("● ", theme::accent_bold(theme::SUCCESS))
-                        } else if s.monitored.unwrap_or(false) {
-                            Span::styled("◌ ", theme::accent_bold(theme::WARN))
-                        } else {
-                            Span::styled("· ", theme::dim())
-                        };
-                        let eps = s
-                            .statistics
-                            .as_ref()
-                            .map(|st| {
-                                format!(
-                                    "  {}/{}",
-                                    st.episode_file_count.unwrap_or(0),
-                                    st.episode_count.unwrap_or(0)
-                                )
-                            })
-                            .unwrap_or_default();
-                        ListItem::new(Line::from(vec![
-                            status,
-                            Span::raw(s.title.clone()),
-                            Span::styled(eps, theme::dim()),
-                        ]))
+        draw_loadable_list(
+            f,
+            area,
+            &format!("Series ({})", indices.len()),
+            theme::SONARR,
+            &self.series,
+            &indices,
+            self.library.selected,
+            self.spinner(),
+            "sonarr not configured",
+            |s| {
+                let pct = s
+                    .statistics
+                    .as_ref()
+                    .and_then(|st| st.percent_of_episodes)
+                    .unwrap_or(0.0);
+                let status = if pct >= 100.0 {
+                    Span::styled("● ", theme::accent_bold(theme::SUCCESS))
+                } else if s.monitored.unwrap_or(false) {
+                    Span::styled("◌ ", theme::accent_bold(theme::WARN))
+                } else {
+                    Span::styled("· ", theme::dim())
+                };
+                let eps = s
+                    .statistics
+                    .as_ref()
+                    .map(|st| {
+                        format!(
+                            "  {}/{}",
+                            st.episode_file_count.unwrap_or(0),
+                            st.episode_count.unwrap_or(0)
+                        )
                     })
-                    .collect();
-                let list = List::new(items)
-                    .highlight_style(theme::selected_row())
-                    .highlight_symbol(theme::SELECT_MARKER);
-                let mut state = ListState::default().with_selected(Some(self.library.selected));
-                f.render_stateful_widget(list, inner, &mut state);
-            }
-            Loadable::Loading => {
-                f.render_widget(
-                    Paragraph::new(format!("{} loading…", self.spinner())).style(theme::dim()),
-                    inner,
-                );
-            }
-            Loadable::Failed(e) => {
-                f.render_widget(
-                    Paragraph::new(e.clone()).style(theme::accent_bold(theme::ERROR)).wrap(Wrap { trim: true }),
-                    inner,
-                );
-            }
-            Loadable::NotAsked => {
-                f.render_widget(Paragraph::new("sonarr not configured").style(theme::dim()), inner);
-            }
-        }
+                    .unwrap_or_default();
+                ListItem::new(Line::from(vec![
+                    status,
+                    Span::raw(s.title.clone()),
+                    Span::styled(eps, theme::dim()),
+                ]))
+            },
+        );
     }
 
     fn draw_library_detail(&mut self, f: &mut Frame, area: Rect) {
@@ -363,13 +278,7 @@ impl App {
         let (title, meta, overview, poster): (String, String, String, Option<String>) =
             match self.library.kind {
                 MediaKind::Movies => {
-                    let indices = self.filtered_movie_indices();
-                    let Some(m) = indices
-                        .get(self.library.selected)
-                        .and_then(|&i| self.movies.ready().and_then(|v| v.get(i)))
-                    else {
-                        return;
-                    };
+                    let Some(m) = self.selected_movie() else { return };
                     (
                         format!("{} ({})", m.title, m.year.map(|y| y.to_string()).unwrap_or_default()),
                         format!(
@@ -383,13 +292,7 @@ impl App {
                     )
                 }
                 MediaKind::Series => {
-                    let indices = self.filtered_series_indices();
-                    let Some(s) = indices
-                        .get(self.library.selected)
-                        .and_then(|&i| self.series.ready().and_then(|v| v.get(i)))
-                    else {
-                        return;
-                    };
+                    let Some(s) = self.selected_series() else { return };
                     let stats = s
                         .statistics
                         .as_ref()
@@ -438,5 +341,129 @@ impl App {
         let mut url = join_url(core.base_url(), rel).ok()?;
         url.query_pairs_mut().append_pair("apikey", core.api_key());
         Some(url.to_string())
+    }
+}
+
+/// Indices into `items` matching the title filter, sorted by title.
+fn filtered_indices<T>(
+    items: &Loadable<Vec<T>>,
+    filter: &str,
+    title: impl Fn(&T) -> &str,
+) -> Vec<usize> {
+    let filter = filter.to_lowercase();
+    items
+        .ready()
+        .map(|items| {
+            let mut idx: Vec<usize> = (0..items.len())
+                .filter(|&i| filter.is_empty() || title(&items[i]).to_lowercase().contains(&filter))
+                .collect();
+            idx.sort_by(|&a, &b| title(&items[a]).to_lowercase().cmp(&title(&items[b]).to_lowercase()));
+            idx
+        })
+        .unwrap_or_default()
+}
+
+/// Panel + list over a `Loadable`, with the shared loading/failed/not-asked
+/// arms; `row` renders one Ready item, in `indices` order.
+#[allow(clippy::too_many_arguments)]
+fn draw_loadable_list<T>(
+    f: &mut Frame,
+    area: Rect,
+    title: &str,
+    accent: Color,
+    data: &Loadable<Vec<T>>,
+    indices: &[usize],
+    selected: usize,
+    spinner: &'static str,
+    not_configured: &str,
+    row: impl Fn(&T) -> ListItem<'static>,
+) {
+    let block = theme::panel(title, accent, true);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    match data {
+        Loadable::Ready(items) => {
+            let items: Vec<ListItem> = indices.iter().map(|&i| row(&items[i])).collect();
+            let list = List::new(items)
+                .highlight_style(theme::selected_row())
+                .highlight_symbol(theme::SELECT_MARKER);
+            let mut state = ListState::default().with_selected(Some(selected));
+            f.render_stateful_widget(list, inner, &mut state);
+        }
+        Loadable::Loading => {
+            f.render_widget(
+                Paragraph::new(format!("{spinner} loading…")).style(theme::dim()),
+                inner,
+            );
+        }
+        Loadable::Failed(e) => {
+            f.render_widget(
+                Paragraph::new(e.clone()).style(theme::accent_bold(theme::ERROR)).wrap(Wrap { trim: true }),
+                inner,
+            );
+        }
+        Loadable::NotAsked => {
+            f.render_widget(Paragraph::new(not_configured).style(theme::dim()), inner);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::api::Clients;
+    use crate::config::{Config, PosterProtocol};
+    use crate::tui::posters::PosterManager;
+
+    fn movie(title: &str) -> Movie {
+        serde_json::from_value(serde_json::json!({ "title": title, "tmdbId": 1 })).unwrap()
+    }
+
+    fn app() -> App {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let posters =
+            PosterManager::detect(PosterProtocol::Off, tx.clone(), crate::api::http::build_client());
+        App::new(Arc::new(Clients::from_config(&Config::default())), tx, posters)
+    }
+
+    #[test]
+    fn filtered_indices_sort_by_title_and_match_case_insensitively() {
+        let mut app = app();
+        app.movies = Loadable::Ready(vec![movie("The Matrix"), movie("alien"), movie("Aliens")]);
+
+        assert_eq!(app.filtered_movie_indices(), vec![1, 2, 0], "no filter: all, title-sorted");
+
+        app.library.filter = "ALIEN".into();
+        assert_eq!(app.filtered_movie_indices(), vec![1, 2]);
+
+        app.library.filter = "zzz".into();
+        assert!(app.filtered_movie_indices().is_empty());
+    }
+
+    #[test]
+    fn selected_movie_follows_filtered_sorted_order() {
+        let mut app = app();
+        app.movies = Loadable::Ready(vec![movie("The Matrix"), movie("Alien")]);
+
+        app.library.selected = 0;
+        assert_eq!(app.selected_movie().unwrap().title, "Alien");
+
+        app.library.selected = 1;
+        assert_eq!(app.selected_movie().unwrap().title, "The Matrix");
+
+        app.library.selected = 5;
+        assert!(app.selected_movie().is_none(), "out-of-range cursor selects nothing");
+    }
+
+    #[test]
+    fn nothing_selectable_until_data_is_ready() {
+        let app = app();
+        assert!(app.filtered_movie_indices().is_empty());
+        assert!(app.filtered_series_indices().is_empty());
+        assert!(app.selected_movie().is_none());
+        assert!(app.selected_series().is_none());
     }
 }

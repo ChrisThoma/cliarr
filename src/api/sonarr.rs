@@ -2,7 +2,7 @@ use chrono::NaiveDate;
 use serde_json::json;
 
 use crate::api::arr_core::ArrCore;
-use crate::api::models::arr::{Paged, QualityProfile, QueueItem, RootFolder, SystemStatus};
+use crate::api::models::arr::{Paged, QueueItem};
 use crate::api::models::sonarr::{Episode, Series};
 use crate::config::ApiKeyService;
 use crate::error::Result;
@@ -10,6 +10,17 @@ use crate::error::Result;
 #[derive(Debug, Clone)]
 pub struct SonarrClient {
     core: ArrCore,
+}
+
+/// Endpoints identical across Radarr/Sonarr (system status, profiles, root
+/// folders, queue delete, commands) live on ArrCore and are reached through
+/// this Deref; only series-specific calls are defined here.
+impl std::ops::Deref for SonarrClient {
+    type Target = ArrCore;
+
+    fn deref(&self) -> &ArrCore {
+        &self.core
+    }
 }
 
 impl SonarrClient {
@@ -23,10 +34,6 @@ impl SonarrClient {
         &self.core
     }
 
-    pub async fn system_status(&self) -> Result<SystemStatus> {
-        self.core.get_json("/api/v3/system/status", &[]).await
-    }
-
     pub async fn lookup(&self, term: &str) -> Result<Vec<Series>> {
         self.core
             .get_json("/api/v3/series/lookup", &[("term", term.to_string())])
@@ -35,14 +42,6 @@ impl SonarrClient {
 
     pub async fn series(&self) -> Result<Vec<Series>> {
         self.core.get_json("/api/v3/series", &[]).await
-    }
-
-    pub async fn quality_profiles(&self) -> Result<Vec<QualityProfile>> {
-        self.core.get_json("/api/v3/qualityprofile", &[]).await
-    }
-
-    pub async fn root_folders(&self) -> Result<Vec<RootFolder>> {
-        self.core.get_json("/api/v3/rootfolder", &[]).await
     }
 
     pub async fn add_series(
@@ -108,18 +107,6 @@ impl SonarrClient {
         Ok(paged.records)
     }
 
-    pub async fn queue_delete(&self, id: i64, blocklist: bool, remove_from_client: bool) -> Result<()> {
-        self.core
-            .delete(
-                &format!("/api/v3/queue/{id}"),
-                &[
-                    ("blocklist", blocklist.to_string()),
-                    ("removeFromClient", remove_from_client.to_string()),
-                ],
-            )
-            .await
-    }
-
     pub async fn calendar(&self, start: NaiveDate, end: NaiveDate) -> Result<Vec<Episode>> {
         self.core
             .get_json(
@@ -147,14 +134,5 @@ impl SonarrClient {
                 ],
             )
             .await
-    }
-
-    /// Fire a Sonarr command, e.g. MissingEpisodeSearch, RefreshSeries, SeriesSearch.
-    pub async fn command(&self, name: &str, extra: serde_json::Value) -> Result<()> {
-        let mut body = json!({ "name": name });
-        if let (Some(obj), Some(extra_obj)) = (body.as_object_mut(), extra.as_object()) {
-            obj.extend(extra_obj.clone());
-        }
-        self.core.post("/api/v3/command", &body).await
     }
 }

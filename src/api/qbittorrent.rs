@@ -82,6 +82,14 @@ impl QbitClient {
         Ok(self.get("/api/v2/app/version", &[]).await?.text().await?)
     }
 
+    /// Health probe (explicit login, then version) shared by `config test`
+    /// and the TUI dashboard; the login surfaces bad credentials directly
+    /// instead of as a 403 retry.
+    pub async fn health_version(&self) -> Result<String> {
+        self.login().await?;
+        Ok(self.app_version().await?.trim().to_string())
+    }
+
     async fn stop_start_endpoints(&self) -> Result<bool> {
         let mut cached = self.uses_stop_start.lock().await;
         if let Some(v) = *cached {

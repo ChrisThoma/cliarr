@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 
-use crate::tui::app::{AddField, App, ConfirmAction, EditField, Modal};
+use crate::tui::app::{AddField, AddTarget, App, ConfirmAction, EditField, Modal};
 use crate::tui::event::Loadable;
 use crate::tui::{fetch, theme};
 
@@ -145,33 +145,35 @@ impl App {
         };
         let tx = self.tx.clone();
         let origin = self.tab;
+        let (monitored, search) = (add.monitored, add.search_on_add);
 
-        if let Some(movie) = add.movie.clone() {
-            let Some(radarr) = self.clients.radarr.clone() else {
-                self.toast_err("radarr is not configured");
-                return;
-            };
-            let title = movie.title.clone();
-            let (monitored, search) = (add.monitored, add.search_on_add);
-            fetch::action(tx, origin, format!("added {title}"), async move {
-                radarr
-                    .add_movie(&movie, profile_id, &root_path, monitored, search)
-                    .await
-                    .map(|_| ())
-            });
-        } else if let Some(series) = add.series.clone() {
-            let Some(sonarr) = self.clients.sonarr.clone() else {
-                self.toast_err("sonarr is not configured");
-                return;
-            };
-            let title = series.title.clone();
-            let (monitored, search) = (add.monitored, add.search_on_add);
-            fetch::action(tx, origin, format!("added {title}"), async move {
-                sonarr
-                    .add_series(&series, profile_id, &root_path, monitored, true, search)
-                    .await
-                    .map(|_| ())
-            });
+        match add.target {
+            AddTarget::Movie(movie) => {
+                let Some(radarr) = self.clients.radarr.clone() else {
+                    self.toast_err("radarr is not configured");
+                    return;
+                };
+                let title = movie.title.clone();
+                fetch::action(tx, origin, format!("added {title}"), async move {
+                    radarr
+                        .add_movie(&movie, profile_id, &root_path, monitored, search)
+                        .await
+                        .map(|_| ())
+                });
+            }
+            AddTarget::Series(series) => {
+                let Some(sonarr) = self.clients.sonarr.clone() else {
+                    self.toast_err("sonarr is not configured");
+                    return;
+                };
+                let title = series.title.clone();
+                fetch::action(tx, origin, format!("added {title}"), async move {
+                    sonarr
+                        .add_series(&series, profile_id, &root_path, monitored, true, search)
+                        .await
+                        .map(|_| ())
+                });
+            }
         }
     }
 

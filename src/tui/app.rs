@@ -179,10 +179,16 @@ pub enum AddField {
     Confirm,
 }
 
+/// What an add modal is adding: a Radarr movie or a Sonarr series.
+#[derive(Debug)]
+pub enum AddTarget {
+    Movie(Movie),
+    Series(Series),
+}
+
 #[derive(Debug)]
 pub struct AddModal {
-    pub movie: Option<Movie>,
-    pub series: Option<Series>,
+    pub target: AddTarget,
     pub options: Loadable<(Vec<QualityProfile>, Vec<RootFolder>)>,
     pub profile_idx: usize,
     pub root_idx: usize,
@@ -193,19 +199,11 @@ pub struct AddModal {
 
 impl AddModal {
     pub fn title(&self) -> String {
-        match (&self.movie, &self.series) {
-            (Some(m), _) => format!(
-                "{} ({})",
-                m.title,
-                m.year.map(|y| y.to_string()).unwrap_or_default()
-            ),
-            (_, Some(s)) => format!(
-                "{} ({})",
-                s.title,
-                s.year.map(|y| y.to_string()).unwrap_or_default()
-            ),
-            _ => String::new(),
-        }
+        let (title, year) = match &self.target {
+            AddTarget::Movie(m) => (&m.title, m.year),
+            AddTarget::Series(s) => (&s.title, s.year),
+        };
+        format!("{} ({})", title, year.map(|y| y.to_string()).unwrap_or_default())
     }
 }
 
@@ -750,4 +748,34 @@ pub fn move_selection(selected: &mut usize, delta: i64, len: usize) {
     }
     let cur = *selected as i64;
     *selected = (cur + delta).clamp(0, len as i64 - 1) as usize;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_modal_title_formats_both_target_kinds() {
+        let modal = |target| AddModal {
+            target,
+            options: Loadable::NotAsked,
+            profile_idx: 0,
+            root_idx: 0,
+            field: AddField::Profile,
+            monitored: true,
+            search_on_add: true,
+        };
+
+        let movie: Movie = serde_json::from_value(serde_json::json!({
+            "title": "Dune: Part Two", "year": 2024, "tmdbId": 693134
+        }))
+        .unwrap();
+        assert_eq!(modal(AddTarget::Movie(movie)).title(), "Dune: Part Two (2024)");
+
+        let series: Series = serde_json::from_value(serde_json::json!({
+            "title": "Severance", "year": 2022, "tvdbId": 371980
+        }))
+        .unwrap();
+        assert_eq!(modal(AddTarget::Series(series)).title(), "Severance (2022)");
+    }
 }

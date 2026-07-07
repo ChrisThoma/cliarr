@@ -176,14 +176,7 @@ async fn test_config(config: &Config, json: bool) -> Result<()> {
         async {
             match &clients.qbit {
                 None => None,
-                Some(c) => Some(
-                    async {
-                        c.login().await?;
-                        let v = c.app_version().await?;
-                        Ok(format!("qBittorrent {}", v.trim()))
-                    }
-                    .await,
-                ),
+                Some(c) => Some(c.health_version().await.map(|v| format!("qBittorrent {v}"))),
             }
         },
         async {

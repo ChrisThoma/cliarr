@@ -112,6 +112,47 @@ async fn old_webapi_uses_pause_endpoint() {
 }
 
 #[tokio::test]
+async fn health_version_logs_in_then_returns_trimmed_version() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v2/auth/login"))
+        .and(body_string_contains("username=admin"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("Ok."))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v2/app/version"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("v5.0.4\n"))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let version = client(&server).health_version().await.unwrap();
+    assert_eq!(version, "v5.0.4");
+}
+
+#[tokio::test]
+async fn health_version_surfaces_bad_credentials() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v2/auth/login"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("Fails."))
+        .mount(&server)
+        .await;
+    // The version endpoint must never be hit when the login fails.
+    Mock::given(method("GET"))
+        .and(path("/api/v2/app/version"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("v5.0.4"))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    let err = client(&server).health_version().await.unwrap_err();
+    assert!(matches!(err, CliarrError::Auth { service: "qbittorrent" }), "got: {err:?}");
+}
+
+#[tokio::test]
 async fn delete_sends_delete_files_flag() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

@@ -1,8 +1,10 @@
 //! Shared request plumbing for Radarr/Sonarr (identical v3 API conventions).
 
 use serde::de::DeserializeOwned;
+use serde_json::json;
 
 use crate::api::http::{check, join_url};
+use crate::api::models::arr::{QualityProfile, RootFolder, SystemStatus};
 use crate::error::Result;
 
 #[derive(Debug, Clone)]
@@ -94,5 +96,40 @@ impl ArrCore {
             .await?;
         check(self.service, resp).await?;
         Ok(())
+    }
+
+    // ---- endpoints shared verbatim by Radarr and Sonarr --------------------
+
+    pub async fn system_status(&self) -> Result<SystemStatus> {
+        self.get_json("/api/v3/system/status", &[]).await
+    }
+
+    pub async fn quality_profiles(&self) -> Result<Vec<QualityProfile>> {
+        self.get_json("/api/v3/qualityprofile", &[]).await
+    }
+
+    pub async fn root_folders(&self) -> Result<Vec<RootFolder>> {
+        self.get_json("/api/v3/rootfolder", &[]).await
+    }
+
+    pub async fn queue_delete(&self, id: i64, blocklist: bool, remove_from_client: bool) -> Result<()> {
+        self.delete(
+            &format!("/api/v3/queue/{id}"),
+            &[
+                ("blocklist", blocklist.to_string()),
+                ("removeFromClient", remove_from_client.to_string()),
+            ],
+        )
+        .await
+    }
+
+    /// Fire a service command, e.g. MoviesSearch/RefreshMovie (Radarr) or
+    /// SeriesSearch/RefreshSeries (Sonarr).
+    pub async fn command(&self, name: &str, extra: serde_json::Value) -> Result<()> {
+        let mut body = json!({ "name": name });
+        if let (Some(obj), Some(extra_obj)) = (body.as_object_mut(), extra.as_object()) {
+            obj.extend(extra_obj.clone());
+        }
+        self.post("/api/v3/command", &body).await
     }
 }

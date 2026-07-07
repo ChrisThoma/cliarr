@@ -48,14 +48,7 @@ pub fn dashboard(tx: UnboundedSender<Event>, clients: Arc<Clients>) {
     if let Some(qbit) = clients.qbit.clone() {
         let tx = tx.clone();
         tokio::spawn(async move {
-            let result = async {
-                qbit.login().await?;
-                qbit.app_version().await
-            }
-            .await
-            .map(|v| v.trim().to_string())
-            .map_err(err_str);
-            send(&tx, DataMsg::QbitHealth(result));
+            send(&tx, DataMsg::QbitHealth(qbit.health_version().await.map_err(err_str)));
         });
     }
     if let Some(nzbget) = clients.nzbget.clone() {

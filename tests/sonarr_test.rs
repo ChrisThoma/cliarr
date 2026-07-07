@@ -1,6 +1,7 @@
 use cliarr::api::http::build_client;
 use cliarr::api::sonarr::SonarrClient;
 use cliarr::config::ApiKeyService;
+use cliarr::error::CliarrError;
 use serde_json::json;
 use wiremock::matchers::{body_partial_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -90,6 +91,98 @@ async fn add_series_posts_expected_payload() {
         .await
         .unwrap();
     assert_eq!(added.id, 9);
+}
+
+// The next five tests exercise the endpoints shared with Radarr, which live
+// on ArrCore and are reached through SonarrClient's Deref.
+
+#[tokio::test]
+async fn system_status_reaches_shared_core() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/system/status"))
+        .and(header("X-Api-Key", "test-key"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"version": "4.0.10"})))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let status = client(&server).system_status().await.unwrap();
+    assert_eq!(status.version, "4.0.10");
+}
+
+#[tokio::test]
+async fn unauthorized_maps_to_sonarr_auth_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/system/status"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+
+    let err = client(&server).system_status().await.unwrap_err();
+    assert!(
+        matches!(err, CliarrError::Auth { service: "sonarr" }),
+        "shared core must keep the per-service name; got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn queue_delete_sends_blocklist_flags() {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/v3/queue/9"))
+        .and(query_param("blocklist", "false"))
+        .and(query_param("removeFromClient", "true"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    client(&server).queue_delete(9, false, true).await.unwrap();
+}
+
+#[tokio::test]
+async fn command_merges_extra_fields_into_body() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v3/command"))
+        .and(header("X-Api-Key", "test-key"))
+        .and(body_partial_json(json!({"name": "SeriesSearch", "seriesId": 9})))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({"id": 1})))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    client(&server)
+        .command("SeriesSearch", json!({"seriesId": 9}))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn quality_profiles_and_root_folders_deserialize() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/qualityprofile"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 6, "name": "HD-1080p"}
+        ])))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/rootfolder"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 1, "path": "/volume1/tv", "freeSpace": 5_000_000_000i64}
+        ])))
+        .mount(&server)
+        .await;
+
+    let c = client(&server);
+    let profiles = c.quality_profiles().await.unwrap();
+    assert_eq!(profiles[0].name, "HD-1080p");
+    let roots = c.root_folders().await.unwrap();
+    assert_eq!(roots[0].path, "/volume1/tv");
 }
 
 #[tokio::test]

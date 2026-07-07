@@ -156,6 +156,26 @@ async fn queue_unwraps_paged_records() {
     assert_eq!(queue[0].progress().unwrap().round(), 75.0);
 }
 
+/// `command` lives on ArrCore (shared with Sonarr) and is reached through
+/// RadarrClient's Deref; the extra fields must merge next to "name".
+#[tokio::test]
+async fn command_merges_extra_fields_into_body() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v3/command"))
+        .and(header("X-Api-Key", "test-key"))
+        .and(body_partial_json(json!({"name": "MoviesSearch", "movieIds": [42]})))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({"id": 1})))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    client(&server)
+        .command("MoviesSearch", json!({"movieIds": [42]}))
+        .await
+        .unwrap();
+}
+
 #[tokio::test]
 async fn queue_delete_sends_blocklist_flags() {
     let server = MockServer::start().await;
