@@ -5,8 +5,8 @@ pub enum CliarrError {
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
-    #[error("{service}: authentication failed; check the API key/credentials in your config")]
-    Auth { service: &'static str },
+    #[error("{service}: authentication failed ({detail})")]
+    Auth { service: &'static str, detail: String },
 
     #[error("{service} returned HTTP {status}: {body}")]
     Api {

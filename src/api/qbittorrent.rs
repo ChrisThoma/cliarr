@@ -41,10 +41,14 @@ impl QbitClient {
             .send()
             .await?;
         let resp = check(SERVICE, resp).await?;
-        // qBittorrent returns 200 with body "Fails." on bad credentials.
+        // qBittorrent returns 200 with body "Fails." on bad credentials (as
+        // opposed to a 401, which check() already surfaces with its body).
         let body = resp.text().await.unwrap_or_default();
         if body.trim() != "Ok." {
-            return Err(CliarrError::Auth { service: SERVICE });
+            return Err(CliarrError::Auth {
+                service: SERVICE,
+                detail: format!("qBittorrent rejected the login (server said {:?})", body.trim()),
+            });
         }
         Ok(())
     }
