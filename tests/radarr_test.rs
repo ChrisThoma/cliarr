@@ -132,7 +132,7 @@ async fn unauthorized_maps_to_auth_error() {
         .await;
 
     let err = client(&server).system_status().await.unwrap_err();
-    assert!(matches!(err, CliarrError::Auth { service: "radarr" }), "got: {err:?}");
+    assert!(matches!(err, CliarrError::Auth { service: "radarr", .. }), "got: {err:?}");
 }
 
 #[tokio::test]

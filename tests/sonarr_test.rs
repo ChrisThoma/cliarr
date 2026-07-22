@@ -122,7 +122,7 @@ async fn unauthorized_maps_to_sonarr_auth_error() {
 
     let err = client(&server).system_status().await.unwrap_err();
     assert!(
-        matches!(err, CliarrError::Auth { service: "sonarr" }),
+        matches!(err, CliarrError::Auth { service: "sonarr", .. }),
         "shared core must keep the per-service name; got: {err:?}"
     );
 }

@@ -43,7 +43,7 @@ async fn login_rejects_bad_credentials_body() {
         .await;
 
     let err = client(&server).login().await.unwrap_err();
-    assert!(matches!(err, CliarrError::Auth { service: "qbittorrent" }));
+    assert!(matches!(err, CliarrError::Auth { service: "qbittorrent", .. }));
 }
 
 #[tokio::test]
@@ -149,7 +149,7 @@ async fn health_version_surfaces_bad_credentials() {
         .await;
 
     let err = client(&server).health_version().await.unwrap_err();
-    assert!(matches!(err, CliarrError::Auth { service: "qbittorrent" }), "got: {err:?}");
+    assert!(matches!(err, CliarrError::Auth { service: "qbittorrent", .. }), "got: {err:?}");
 }
 
 #[tokio::test]
