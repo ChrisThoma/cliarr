@@ -10,6 +10,8 @@
 ```
 
 [![CI](https://github.com/ChrisThoma/cliarr/actions/workflows/ci.yml/badge.svg)](https://github.com/ChrisThoma/cliarr/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/cliarr)](https://crates.io/crates/cliarr)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 A fast terminal client for your home media stack: **Radarr**, **Sonarr**, **Plex**, **qBittorrent** and **NZBGet**, all over their LAN HTTP APIs. No SSH into the NAS required.
 
