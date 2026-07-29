@@ -1,12 +1,12 @@
 [package]
 name = "cliarr"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 rust-version = "1.88"
 description = "A fast CLI/TUI for your home media stack"
 license = "MIT"
 repository = "https://github.com/ChrisThoma/cliarr"
-homepage = "https://individuation.dev/projects/cliarr/"
+homepage = "https://dreamrot.dev/projects/cliarr/"
 readme = "README.md"
 keywords = ["radarr", "sonarr", "plex", "tui", "self-hosted"]
 categories = ["command-line-utilities"]
